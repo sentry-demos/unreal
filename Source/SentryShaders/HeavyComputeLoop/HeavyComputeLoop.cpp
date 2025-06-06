@@ -99,7 +99,7 @@ void FHeavyComputeLoopInterface::DispatchRenderThread(FRHICommandListImmediate& 
 
 	{
 		SCOPE_CYCLE_COUNTER(STAT_HeavyComputeLoop_Execute);
-		DECLARE_GPU_STAT(HeavyComputeLoop)
+		DECLARE_GPU_STAT(HeavyComputeLoop);
 		RDG_EVENT_SCOPE(GraphBuilder, "HeavyComputeLoop");
 		RDG_GPU_STAT_SCOPE(GraphBuilder, HeavyComputeLoop);
 
