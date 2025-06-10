@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #pragma once
 
@@ -25,6 +25,7 @@ class ISentrySubsystem;
 class FSentryOutputDevice;
 class FSentryErrorOutputDevice;
 
+DECLARE_DELEGATE_OneParam(FConfigureSettingsNativeDelegate, USentrySettings*);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FConfigureSettingsDelegate, USentrySettings*, Settings);
 
 /**
@@ -48,6 +49,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Sentry")
 	void InitializeWithSettings(const FConfigureSettingsDelegate& OnConfigureSettings);
+	void InitializeWithSettings(const FConfigureSettingsNativeDelegate& OnConfigureSettings);
 
 	/** Closes the Sentry SDK. */
 	UFUNCTION(BlueprintCallable, Category = "Sentry")
@@ -74,19 +76,19 @@ public:
 	 *
 	 * @param Message If a message is provided it’s rendered as text and the whitespace is preserved.
 	 * Very long text might be abbreviated in the UI.
-	 * 
+	 *
 	 * @param Category Categories are dotted strings that indicate what the crumb is or where it comes from.
 	 * Typically it’s a module name or a descriptive string. For instance ui.click could be used to indicate that a click
 	 * happened in the UI or flask could be used to indicate that the event originated in the Flask framework.
-	 * 
+	 *
 	 * @param Type The type of breadcrumb.
 	 * The default type is default which indicates no specific handling.
 	 * Other types are currently http for HTTP requests and navigation for navigation events.
-	 * 
+	 *
 	 * @param Data Data associated with this breadcrumb.
 	 * Contains a sub-object whose contents depend on the breadcrumb type.
 	 * Additional parameters that are unsupported by the type are rendered as a key/value table.
-	 * 
+	 *
 	 * @param Level Breadcrumb level.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Sentry", meta = (AutoCreateRefTerm = "Data"))
@@ -179,18 +181,6 @@ public:
 	/** Removes a user for the current scope. */
 	UFUNCTION(BlueprintCallable, Category = "Sentry")
 	void RemoveUser();
-
-	/**
-	 * Configures the scope through the callback.
-	 * Sentry SDK uses the Scope to attach contextual data to events.
-	 *
-	 * @param OnConfigureScope The callback to configure the scope.
-	 *
-	 * @note: Not supported for Windows/Linux.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sentry", meta = (AutoCreateRefTerm = "OnCofigureScope"))
-	void ConfigureScope(const FConfigureScopeDelegate& OnConfigureScope);
-	void ConfigureScope(const FConfigureScopeNativeDelegate& OnConfigureScope);
 
 	/**
 	 * Sets context values which will be used for enriching events.

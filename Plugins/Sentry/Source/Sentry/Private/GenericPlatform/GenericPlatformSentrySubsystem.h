@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #pragma once
 
@@ -26,14 +26,13 @@ public:
 	virtual void AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FString>& Data, ESentryLevel Level) override;
 	virtual void ClearBreadcrumbs() override;
 	virtual TSharedPtr<ISentryId> CaptureMessage(const FString& message, ESentryLevel level) override;
-	virtual TSharedPtr<ISentryId> CaptureMessageWithScope(const FString& message, const FSentryScopeDelegate& onScopeConfigure, ESentryLevel level) override;
+	virtual TSharedPtr<ISentryId> CaptureMessageWithScope(const FString& message, ESentryLevel level, const FSentryScopeDelegate& onConfigureScope) override;
 	virtual TSharedPtr<ISentryId> CaptureEvent(TSharedPtr<ISentryEvent> event) override;
 	virtual TSharedPtr<ISentryId> CaptureEventWithScope(TSharedPtr<ISentryEvent> event, const FSentryScopeDelegate& onScopeConfigure) override;
 	virtual TSharedPtr<ISentryId> CaptureEnsure(const FString& type, const FString& message) override;
 	virtual void CaptureUserFeedback(TSharedPtr<ISentryUserFeedback> userFeedback) override;
 	virtual void SetUser(TSharedPtr<ISentryUser> user) override;
 	virtual void RemoveUser() override;
-	virtual void ConfigureScope(const FSentryScopeDelegate& onConfigureScope) override;
 	virtual void SetContext(const FString& key, const TMap<FString, FString>& values) override;
 	virtual void SetTag(const FString& key, const FString& value) override;
 	virtual void RemoveTag(const FString& key) override;
@@ -53,15 +52,13 @@ public:
 
 	FString GetGpuDumpBackupPath() const;
 
-	TSharedPtr<FGenericPlatformSentryScope> GetCurrentScope();
-
 protected:
 	virtual void ConfigureHandlerPath(sentry_options_t* Options) {}
 	virtual void ConfigureDatabasePath(sentry_options_t* Options) {}
 	virtual void ConfigureCertsPath(sentry_options_t* Options) {}
 	virtual void ConfigureLogFileAttachment(sentry_options_t* Options) {}
 	virtual void ConfigureScreenshotAttachment(sentry_options_t* Options) {}
-	virtual void ConfigureGpuDumpAttachment(sentry_options_t* Options) {}	
+	virtual void ConfigureGpuDumpAttachment(sentry_options_t* Options) {}
 
 	FString GetHandlerPath() const;
 	FString GetDatabasePath() const;
@@ -87,15 +84,11 @@ private:
 
 	TSharedPtr<FGenericPlatformSentryCrashReporter> crashReporter;
 
-	TArray<TSharedPtr<FGenericPlatformSentryScope>> scopeStack;
-
 	bool isEnabled;
 
 	bool isStackTraceEnabled;
 	bool isPiiAttachmentEnabled;
 	bool isScreenshotAttachmentEnabled;
-
-	FCriticalSection CriticalSection;
 
 	FString databaseParentPath;
 };

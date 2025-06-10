@@ -30,7 +30,7 @@ extern "C" {
 #        define SENTRY_SDK_NAME "sentry.native"
 #    endif
 #endif
-#define SENTRY_SDK_VERSION "0.8.4"
+#define SENTRY_SDK_VERSION "0.9.0"
 #define SENTRY_SDK_USER_AGENT SENTRY_SDK_NAME "/" SENTRY_SDK_VERSION
 
 /* common platform detection */
@@ -48,6 +48,9 @@ extern "C" {
 #elif defined(__ANDROID__)
 #    define SENTRY_PLATFORM_ANDROID
 #    define SENTRY_PLATFORM_LINUX
+#    define SENTRY_PLATFORM_UNIX
+#elif defined(__PROSPERO__)
+#    define SENTRY_PLATFORM_PS
 #    define SENTRY_PLATFORM_UNIX
 #elif defined(__linux) || defined(__linux__)
 #    define SENTRY_PLATFORM_LINUX
@@ -93,6 +96,8 @@ extern "C" {
 /* context type dependencies */
 #ifdef _WIN32
 #    include <windows.h>
+#elif defined(SENTRY_PLATFORM_PS)
+#    include <sys/signal.h>
 #else
 #    include <signal.h>
 #endif
@@ -221,6 +226,18 @@ SENTRY_API sentry_value_t sentry_value_new_list(void);
  * Creates a new object.
  */
 SENTRY_API sentry_value_t sentry_value_new_object(void);
+/**
+ * Creates a new user object.
+ * Will return a sentry_value_new_null if all parameters are null.
+ *
+ * This DOES NOT set the user object, this should still be done with
+ * sentry_set_user(), passing the return of this function as a parameter
+ */
+SENTRY_API sentry_value_t sentry_value_new_user(const char *id,
+    const char *username, const char *email, const char *ip_address);
+SENTRY_API sentry_value_t sentry_value_new_user_n(const char *id, size_t id_len,
+    const char *username, size_t username_len, const char *email,
+    size_t email_len, const char *ip_address, size_t ip_address_len);
 
 /**
  * Returns the type of the value passed.
@@ -499,6 +516,8 @@ SENTRY_EXPERIMENTAL_API void sentry_event_value_add_stacktrace(
 typedef struct sentry_ucontext_s {
 #ifdef _WIN32
     EXCEPTION_POINTERS exception_ptrs;
+#elif defined(SENTRY_PLATFORM_PS)
+    int data;
 #else
     int signum;
     siginfo_t *siginfo;
@@ -795,6 +814,22 @@ SENTRY_API void sentry_options_free(sentry_options_t *opts);
 SENTRY_API void sentry_options_set_transport(
     sentry_options_t *opts, sentry_transport_t *transport);
 
+#ifdef SENTRY_PLATFORM_NX
+/**
+ * Function to start a network connection.
+ * This is called on a background thread so it must be thread-safe.
+ */
+SENTRY_API void sentry_options_set_network_connect_func(
+    sentry_options_t *opts, void (*network_connect_func)(void));
+
+/**
+ * If false (the default), the SDK won't add PII or other sensitive data to the
+ * payload. For example, a pseudo-random identifier combining device and app ID.
+ */
+SENTRY_API void sentry_options_set_send_default_pii(
+    sentry_options_t *opts, int value);
+#endif
+
 /**
  * Type of the `before_send` callback.
  *
@@ -827,7 +862,7 @@ SENTRY_API void sentry_options_set_transport(
  * sent.
  */
 typedef sentry_value_t (*sentry_event_function_t)(
-    sentry_value_t event, void *hint, void *closure);
+    sentry_value_t event, void *hint, void *user_data);
 
 /**
  * Sets the `before_send` callback.
@@ -835,7 +870,7 @@ typedef sentry_value_t (*sentry_event_function_t)(
  * See the `sentry_event_function_t` typedef above for more information.
  */
 SENTRY_API void sentry_options_set_before_send(
-    sentry_options_t *opts, sentry_event_function_t func, void *data);
+    sentry_options_t *opts, sentry_event_function_t func, void *user_data);
 
 /**
  * Type of the `on_crash` callback.
@@ -888,7 +923,7 @@ SENTRY_API void sentry_options_set_before_send(
  * sent.
  */
 typedef sentry_value_t (*sentry_crash_function_t)(
-    const sentry_ucontext_t *uctx, sentry_value_t event, void *closure);
+    const sentry_ucontext_t *uctx, sentry_value_t event, void *user_data);
 
 /**
  * Sets the `on_crash` callback.
@@ -1339,7 +1374,8 @@ SENTRY_API void sentry_options_set_system_crash_reporter_enabled(
  * Enables a wait for the crash report upload to be finished before shutting
  * down. This is disabled by default.
  *
- * This setting only has an effect when using the `crashpad` backend on Linux.
+ * This setting only has an effect when using the `crashpad` backend on Linux
+ * and Windows.
  */
 SENTRY_API void sentry_options_set_crashpad_wait_for_upload(
     sentry_options_t *opts, int wait_for_upload);
@@ -1367,7 +1403,7 @@ SENTRY_API uint64_t sentry_options_get_shutdown_timeout(sentry_options_t *opts);
 SENTRY_API void sentry_options_set_backend(
     sentry_options_t *opts, sentry_backend_t *backend);
 
-/* -- Global APIs -- */
+/* -- Global/Scope APIs -- */
 
 /**
  * Initializes the Sentry SDK with the specified options.
@@ -1468,6 +1504,19 @@ SENTRY_API void sentry_user_consent_reset(void);
 SENTRY_API sentry_user_consent_t sentry_user_consent_get(void);
 
 /**
+ * A sentry Scope.
+ *
+ * See https://develop.sentry.dev/sdk/telemetry/scopes/
+ */
+struct sentry_scope_s;
+typedef struct sentry_scope_s sentry_scope_t;
+
+/**
+ * Creates a local scope.
+ */
+SENTRY_API sentry_scope_t *sentry_local_scope_new(void);
+
+/**
  * Sends a sentry event.
  *
  * If returns a nil UUID if the event being passed in is a transaction, and the
@@ -1475,6 +1524,14 @@ SENTRY_API sentry_user_consent_t sentry_user_consent_get(void);
  * be used to send transactions.
  */
 SENTRY_API sentry_uuid_t sentry_capture_event(sentry_value_t event);
+
+/**
+ * Sends a sentry event with a local scope.
+ *
+ * Takes ownership of `scope`.
+ */
+SENTRY_API sentry_uuid_t sentry_capture_event_with_scope(
+    sentry_value_t event, sentry_scope_t *scope);
 
 /**
  * Allows capturing independently created minidumps.
@@ -1520,11 +1577,15 @@ SENTRY_EXPERIMENTAL_API void sentry_handle_exception(
  * Adds the breadcrumb to be sent in case of an event.
  */
 SENTRY_API void sentry_add_breadcrumb(sentry_value_t breadcrumb);
+SENTRY_API void sentry_scope_add_breadcrumb(
+    sentry_scope_t *scope, sentry_value_t breadcrumb);
 
 /**
  * Sets the specified user.
  */
 SENTRY_API void sentry_set_user(sentry_value_t user);
+SENTRY_API void sentry_scope_set_user(
+    sentry_scope_t *scope, sentry_value_t user);
 
 /**
  * Removes a user.
@@ -1537,6 +1598,10 @@ SENTRY_API void sentry_remove_user(void);
 SENTRY_API void sentry_set_tag(const char *key, const char *value);
 SENTRY_API void sentry_set_tag_n(
     const char *key, size_t key_len, const char *value, size_t value_len);
+SENTRY_API void sentry_scope_set_tag(
+    sentry_scope_t *scope, const char *key, const char *value);
+SENTRY_API void sentry_scope_set_tag_n(sentry_scope_t *scope, const char *key,
+    size_t key_len, const char *value, size_t value_len);
 
 /**
  * Removes the tag with the specified key.
@@ -1550,6 +1615,10 @@ SENTRY_API void sentry_remove_tag_n(const char *key, size_t key_len);
 SENTRY_API void sentry_set_extra(const char *key, sentry_value_t value);
 SENTRY_API void sentry_set_extra_n(
     const char *key, size_t key_len, sentry_value_t value);
+SENTRY_API void sentry_scope_set_extra(
+    sentry_scope_t *scope, const char *key, sentry_value_t value);
+SENTRY_API void sentry_scope_set_extra_n(sentry_scope_t *scope, const char *key,
+    size_t key_len, sentry_value_t value);
 
 /**
  * Removes the extra with the specified key.
@@ -1562,6 +1631,10 @@ SENTRY_API void sentry_remove_extra_n(const char *key, size_t key_len);
  */
 SENTRY_API void sentry_set_context(const char *key, sentry_value_t value);
 SENTRY_API void sentry_set_context_n(
+    const char *key, size_t key_len, sentry_value_t value);
+SENTRY_API void sentry_scope_set_context(
+    sentry_scope_t *scope, const char *key, sentry_value_t value);
+SENTRY_API void sentry_scope_set_context_n(sentry_scope_t *scope,
     const char *key, size_t key_len, sentry_value_t value);
 
 /**
@@ -1579,6 +1652,18 @@ SENTRY_API void sentry_remove_context_n(const char *key, size_t key_len);
 SENTRY_API void sentry_set_fingerprint(const char *fingerprint, ...);
 SENTRY_API void sentry_set_fingerprint_n(
     const char *fingerprint, size_t fingerprint_len, ...);
+SENTRY_API void sentry_scope_set_fingerprint(
+    sentry_scope_t *scope, const char *fingerprint, ...);
+SENTRY_API void sentry_scope_set_fingerprint_n(sentry_scope_t *scope,
+    const char *fingerprint, size_t fingerprint_len, ...);
+
+/**
+ * Sets the event fingerprints.
+ *
+ * This accepts a list of fingerprints created with `sentry_value_new_list`.
+ */
+SENTRY_API void sentry_scope_set_fingerprints(
+    sentry_scope_t *scope, sentry_value_t fingerprints);
 
 /**
  * Removes the fingerprint.
@@ -1605,6 +1690,8 @@ SENTRY_API void sentry_set_transaction_n(
  * Sets the event level.
  */
 SENTRY_API void sentry_set_level(sentry_level_t level);
+SENTRY_API void sentry_scope_set_level(
+    sentry_scope_t *scope, sentry_level_t level);
 
 /**
  * Sets the maximum number of spans that can be attached to a
@@ -1718,6 +1805,23 @@ SENTRY_EXPERIMENTAL_API void sentry_end_session_with_status(
  */
 struct sentry_transaction_s;
 typedef struct sentry_transaction_s sentry_transaction_t;
+
+/**
+ * Type of the `before_transaction` callback.
+ *
+ * The callback takes ownership of the `transaction`, and should usually return
+ * that same transaction. In case the transaction should be discarded, the
+ * callback needs to call `sentry_value_decref` on the provided transaction, and
+ * return a `sentry_value_new_null()` instead.
+ */
+typedef sentry_value_t (*sentry_transaction_function_t)(
+    sentry_value_t transaction, void *user_data);
+
+/**
+ * Sets the `before_transaction` callback.
+ */
+SENTRY_EXPERIMENTAL_API void sentry_options_set_before_transaction(
+    sentry_options_t *opts, sentry_transaction_function_t func, void *data);
 
 /**
  * A sentry Span.

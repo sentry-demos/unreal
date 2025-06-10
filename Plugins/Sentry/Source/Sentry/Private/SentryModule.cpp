@@ -1,15 +1,15 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "SentryModule.h"
 #include "SentryDefines.h"
 #include "SentrySettings.h"
 
+#include "Developer/Settings/Public/ISettingsModule.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
-#include "Interfaces/IPluginManager.h"
-#include "Modules/ModuleManager.h"
-#include "Developer/Settings/Public/ISettingsModule.h"
-#include "Misc/Paths.h"
 
 #define LOCTEXT_NAMESPACE "FSentryModule"
 
@@ -86,7 +86,7 @@ FString FSentryModule::GetPluginVersion()
 {
 	TSharedPtr<IPlugin> plugin = IPluginManager::Get().FindPlugin(TEXT("Sentry"));
 
-	if(!plugin)
+	if (!plugin)
 	{
 		return FString();
 	}

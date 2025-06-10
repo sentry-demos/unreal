@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "AppleSentryAttachment.h"
 
@@ -9,13 +9,15 @@
 FAppleSentryAttachment::FAppleSentryAttachment(const TArray<uint8>& data, const FString& filename, const FString& contentType)
 {
 	AttachmentApple = [[SentryAttachment alloc] initWithData:FAppleSentryConverters::ByteDataToNative(data)
-		filename:filename.GetNSString() contentType:contentType.GetNSString()];
+													filename:filename.GetNSString()
+												 contentType:contentType.GetNSString()];
 }
 
 FAppleSentryAttachment::FAppleSentryAttachment(const FString& path, const FString& filename, const FString& contentType)
 {
 	AttachmentApple = [[SentryAttachment alloc] initWithPath:path.GetNSString()
-		filename:filename.GetNSString() contentType:contentType.GetNSString()];
+													filename:filename.GetNSString()
+												 contentType:contentType.GetNSString()];
 }
 
 FAppleSentryAttachment::~FAppleSentryAttachment()

@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 using UnrealBuildTool;
 using System;
@@ -160,6 +160,19 @@ public class Sentry : ModuleRules
 			PublicDefinitions.Add("SENTRY_BUILD_STATIC=1");
 
 			AddEngineThirdPartyPrivateStaticDependencies(Target, "libcurl");
+		}
+		else
+		{
+			if (GetType() == typeof(Sentry))
+			{
+				PublicDefinitions.Add("SENTRY_PLATFORM_NULL");
+
+				// Exclude sources in `Private/GenericPlatform` that use sentry-native API from the build if target platform isn't supported
+				// Plugin extensions that add support for more platforms (e.g. consoles) can override this define if needed
+				PublicDefinitions.Add("USE_SENTRY_NATIVE=0");
+
+				Console.WriteLine("To use Sentry SDK on game consoles follow the instructions at https://docs.sentry.io/platforms/unreal/game-consoles/");
+			}
 		}
 	}
 }

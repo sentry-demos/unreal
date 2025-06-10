@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "AppleSentryUserFeedback.h"
 
@@ -12,7 +12,11 @@ FAppleSentryUserFeedback::FAppleSentryUserFeedback(TSharedPtr<ISentryId> eventId
 	SentryId* id = idIOS->GetNativeObject();
 
 	UserFeedbackApple = [[SentryFeedback alloc] initWithMessage:@""
-		name:nil email:nil source:SentryFeedbackSourceCustom associatedEventId:id attachments:nil];
+														   name:nil
+														  email:nil
+														 source:SentryFeedbackSourceCustom
+											  associatedEventId:id
+													attachments:nil];
 }
 
 FAppleSentryUserFeedback::~FAppleSentryUserFeedback()

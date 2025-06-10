@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "SentryLibrary.h"
-#include "SentryEvent.h"
+#include "SentryAttachment.h"
 #include "SentryBreadcrumb.h"
+#include "SentryEvent.h"
+#include "SentryTransactionContext.h"
 #include "SentryUser.h"
 #include "SentryUserFeedback.h"
-#include "SentryAttachment.h"
-#include "SentryTransactionContext.h"
 
 #include "HAL/PlatformSentryAttachment.h"
 #include "HAL/PlatformSentryBreadcrumb.h"
@@ -29,7 +29,7 @@ USentryEvent* USentryLibrary::CreateSentryEvent(const FString& Message, ESentryL
 
 USentryUser* USentryLibrary::CreateSentryUser(const FString& Email, const FString& Id, const FString& Username, const FString& IpAddress, const TMap<FString, FString>& Data)
 {
-	USentryUser* User = USentryUser::Create(CreateSharedSentryUser());
+	USentryUser* User = USentryUser::Create(MakeShareable(new FPlatformSentryUser));
 
 	if (!Email.IsEmpty())
 		User->SetEmail(Email);

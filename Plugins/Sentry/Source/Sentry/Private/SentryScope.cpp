@@ -1,8 +1,8 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "SentryScope.h"
-#include "SentryBreadcrumb.h"
 #include "SentryAttachment.h"
+#include "SentryBreadcrumb.h"
 
 #include "HAL/PlatformSentryScope.h"
 
@@ -81,38 +81,6 @@ TMap<FString, FString> USentryScope::GetTags() const
 		return TMap<FString, FString>();
 
 	return NativeImpl->GetTags();
-}
-
-void USentryScope::SetDist(const FString& Dist)
-{
-	if (!NativeImpl)
-		return;
-
-	NativeImpl->SetDist(Dist);
-}
-
-FString USentryScope::GetDist() const
-{
-	if (!NativeImpl)
-		return FString();
-
-	return NativeImpl->GetDist();
-}
-
-void USentryScope::SetEnvironment(const FString& Environment)
-{
-	if (!NativeImpl)
-		return;
-
-	NativeImpl->SetEnvironment(Environment);
-}
-
-FString USentryScope::GetEnvironment() const
-{
-	if (!NativeImpl)
-		return FString();
-
-	return NativeImpl->GetEnvironment();
 }
 
 void USentryScope::SetFingerprint(const TArray<FString>& Fingerprint)

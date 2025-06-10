@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #pragma once
 
@@ -58,23 +58,7 @@ public:
 
 	/** Gets a global tags. Tags are searchable key/value string pairs attached to every event. */
 	UFUNCTION(BlueprintPure, Category = "Sentry")
-	TMap<FString, FString> GetTags() const;	
-
-	/** Sets dist in the scope. */
-	UFUNCTION(BlueprintCallable, Category = "Sentry")
-	void SetDist(const FString& Dist);
-
-	/** Gets dist in the scope. */
-	UFUNCTION(BlueprintPure, Category = "Sentry")
-	FString GetDist() const;
-
-	/** Sets environment in the scope. */
-	UFUNCTION(BlueprintCallable, Category = "Sentry")
-	void SetEnvironment(const FString& Environment);
-
-	/** Gets environment in the scope. */
-	UFUNCTION(BlueprintCallable, Category = "Sentry")
-	FString GetEnvironment() const;
+	TMap<FString, FString> GetTags() const;
 
 	/** Sets fingerprint in the scope. */
 	UFUNCTION(BlueprintCallable, Category = "Sentry")

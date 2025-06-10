@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "AppleSentryScope.h"
 
-#include "AppleSentryBreadcrumb.h"
 #include "AppleSentryAttachment.h"
+#include "AppleSentryBreadcrumb.h"
 
 #include "Infrastructure/AppleSentryConverters.h"
 
@@ -79,28 +79,6 @@ TMap<FString, FString> FAppleSentryScope::GetTags() const
 {
 	NSDictionary* scopeDict = [ScopeApple serialize];
 	return FAppleSentryConverters::StringMapToUnreal(scopeDict[@"tags"]);
-}
-
-void FAppleSentryScope::SetDist(const FString& dist)
-{
-	[ScopeApple setDist:dist.GetNSString()];
-}
-
-FString FAppleSentryScope::GetDist() const
-{
-	NSDictionary* scopeDict = [ScopeApple serialize];
-	return FString(scopeDict[@"dist"]);
-}
-
-void FAppleSentryScope::SetEnvironment(const FString& environment)
-{
-	[ScopeApple setEnvironment:environment.GetNSString()];
-}
-
-FString FAppleSentryScope::GetEnvironment() const
-{
-	NSDictionary* scopeDict = [ScopeApple serialize];
-	return FString(scopeDict[@"environment"]);
 }
 
 void FAppleSentryScope::SetFingerprint(const TArray<FString>& fingerprint)

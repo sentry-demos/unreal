@@ -1,16 +1,16 @@
-// Copyright (c) 2022 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "AndroidSentryScope.h"
 
-#include "AndroidSentryBreadcrumb.h"
 #include "AndroidSentryAttachment.h"
+#include "AndroidSentryBreadcrumb.h"
 
 #include "Infrastructure/AndroidSentryConverters.h"
 #include "Infrastructure/AndroidSentryJavaClasses.h"
 
 FAndroidSentryScope::FAndroidSentryScope()
-	: FSentryJavaObjectWrapper(FSentryJavaClass { "io/sentry/Scope", ESentryJavaClassType::External }, "(Lio/sentry/SentryOptions;)V",
-		*FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::SentryBridgeJava, "getOptions", "()Lio/sentry/SentryOptions;"))
+	: FSentryJavaObjectWrapper(SentryJavaClasses::ScopeImpl, "(Lio/sentry/SentryOptions;)V",
+		  *FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::SentryBridgeJava, "getOptions", "()Lio/sentry/SentryOptions;"))
 {
 	SetupClassMethods();
 }
@@ -97,26 +97,6 @@ TMap<FString, FString> FAndroidSentryScope::GetTags() const
 {
 	auto tags = CallObjectMethod<jobject>(GetTagsMethod);
 	return FAndroidSentryConverters::StringMapToUnreal(*tags);
-}
-
-void FAndroidSentryScope::SetDist(const FString& dist)
-{
-	SetTagValue("dist", dist);
-}
-
-FString FAndroidSentryScope::GetDist() const
-{
-	return GetTagValue("dist");
-}
-
-void FAndroidSentryScope::SetEnvironment(const FString& environment)
-{
-	SetTagValue("environment", environment);
-}
-
-FString FAndroidSentryScope::GetEnvironment() const
-{
-	return GetTagValue("environment");
 }
 
 void FAndroidSentryScope::SetFingerprint(const TArray<FString>& fingerprint)
