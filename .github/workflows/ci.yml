@@ -1,18 +1,27 @@
 name: run-demo
 
 on:
-  # schedule:
-  #    - cron: '0 */3 * * *' # every three hours
-  workflow_dispatch:
+  schedule:
+    - cron: '0 */3 * * *' # every three hours
+  workflow_dispatch: # allows manual runs
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
   UE_VERSION: 5.5
+  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+  SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+  SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
 jobs:
   build:
-    name: Build
+    name: Build and Test
     runs-on: windows-latest
+    timeout-minutes: 120
 
     steps:
       - name: Log in to GitHub package registry
@@ -28,12 +37,20 @@ jobs:
             --name unreal `
             --volume "${{ github.workspace }}:C:\workspace" `
             --workdir C:\workspace `
+            --env SENTRY_DSN="${{ env.SENTRY_DSN }}" `
+            --env SENTRY_ORG="${{ env.SENTRY_ORG }}" `
+            --env SENTRY_AUTH_TOKEN="${{ env.SENTRY_AUTH_TOKEN }}" `
+            --env SENTRY_PROJECT="${{ env.SENTRY_PROJECT }}" `
             ghcr.io/getsentry/unreal-docker:${{ env.UE_VERSION }}
 
       - uses: actions/checkout@v4
         with:
           path: checkout
           submodules: recursive
+
+      - name: Install sentry-cli
+        run: |
+          docker exec unreal pip install sentry-cli
 
       - name: Build game
         run: |
@@ -49,6 +66,28 @@ jobs:
             -package `
             -archive
 
+      - name: Upload debug symbols
+        if: ${{ env.SENTRY_AUTH_TOKEN != '' }}
+        run: |
+          docker exec unreal sentry-cli debug-files upload `
+            --org="${{ env.SENTRY_ORG }}" `
+            --project="${{ env.SENTRY_PROJECT }}" `
+            --auth-token="${{ env.SENTRY_AUTH_TOKEN }}" `
+            --include-sources `
+            C:\workspace\checkout\Builds\Windows\SentryTower.exe `
+            C:\workspace\checkout\Builds\Windows\SentryTower.pdb
+
+      - name: Upload plugin debug symbols
+        if: ${{ env.SENTRY_AUTH_TOKEN != '' }}
+        run: |
+          docker exec unreal sentry-cli debug-files upload `
+            --org="${{ env.SENTRY_ORG }}" `
+            --project="${{ env.SENTRY_PROJECT }}" `
+            --auth-token="${{ env.SENTRY_AUTH_TOKEN }}" `
+            --include-sources `
+            C:\workspace\checkout\Plugins\Sentry\Binaries\Win64\UnrealEditor-Sentry.dll `
+            C:\workspace\checkout\Plugins\Sentry\Binaries\Win64\UnrealEditor-SentryEditor.dll
+
       - name: Run simulation
         run: |
-          docker exec unreal C:\workspace\checkout\Builds\Windows\SentryTower.exe -Unattended -nullrhi --idle
+          docker exec unreal C:\workspace\checkout\Builds\Windows\SentryTower.exe -Unattended -nullrhi --idle || true
