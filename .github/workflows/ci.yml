@@ -48,10 +48,6 @@ jobs:
           path: checkout
           submodules: recursive
 
-      - name: Install sentry-cli
-        run: |
-          docker exec unreal pip install sentry-cli
-
       - name: Build game
         run: |
           docker exec unreal C:\UnrealEngine\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun `
