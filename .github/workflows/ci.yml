@@ -49,6 +49,20 @@ jobs:
             -package `
             -archive
 
+      - name: Upload debug symbols to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          docker exec unreal C:\workspace\checkout\Plugins\Sentry\Scripts\upload-debug-symbols-win.bat `
+            Win64 `
+            SentryTower `
+            Game `
+            Development `
+            C:\workspace\checkout `
+            C:\workspace\checkout\Plugins\Sentry
+
       - name: Run simulation
         run: |
           docker exec unreal C:\workspace\checkout\Builds\Windows\SentryTower.exe -Unattended -nullrhi --idle
