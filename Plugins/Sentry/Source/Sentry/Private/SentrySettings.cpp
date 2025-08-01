@@ -8,6 +8,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/App.h"
+#include "HAL/PlatformMisc.h"
 
 USentrySettings::USentrySettings(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -95,6 +96,24 @@ FString USentrySettings::GetFormattedReleaseName()
 	}
 
 	return FormattedReleaseName;
+}
+
+FString USentrySettings::GetEffectiveDsn() const
+{
+	// Check for environment variable first
+	FString EnvironmentDsn = FPlatformMisc::GetEnvironmentVariable(TEXT("SENTRY_DSN"));
+	UE_LOG(LogSentrySdk, Log, TEXT("Environment variable SENTRY_DSN value: '%s'"), *EnvironmentDsn);
+	UE_LOG(LogSentrySdk, Log, TEXT("Configured DSN value: '%s'"), *Dsn);
+	
+	if (!EnvironmentDsn.IsEmpty())
+	{
+		UE_LOG(LogSentrySdk, Log, TEXT("Using DSN from environment variable SENTRY_DSN"));
+		return EnvironmentDsn;
+	}
+	
+	// Fall back to configured DSN
+	UE_LOG(LogSentrySdk, Log, TEXT("Using DSN from configuration"));
+	return Dsn;
 }
 
 bool USentrySettings::IsDirty() const

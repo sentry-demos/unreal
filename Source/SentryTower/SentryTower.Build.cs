@@ -1,6 +1,9 @@
 // Copyright (c) 2024 Sentry. All Rights Reserved.
 
 using UnrealBuildTool;
+using System;
+using System.IO;
+using System.Diagnostics;
 
 public class SentryTower : ModuleRules
 {
@@ -22,5 +25,8 @@ public class SentryTower : ModuleRules
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
 
 		// To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
+
+		// Add PostBuildSteps for Sentry symbol upload using the integrated build support
+		SentryTower.SentryBuildSupport.AddSentryPostBuildSteps(Target, PostBuildSteps);
 	}
 }

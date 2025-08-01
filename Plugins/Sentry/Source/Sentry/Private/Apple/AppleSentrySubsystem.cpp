@@ -48,7 +48,16 @@ void FAppleSentrySubsystem::InitWithSettings(const USentrySettings* settings, US
 	dispatch_group_enter(sentryDispatchGroup);
 	dispatch_async(dispatch_get_main_queue(), ^{
 		[SentrySDK startWithConfigureOptions:^(SentryOptions *options) {
-			options.dsn = settings->Dsn.GetNSString();
+			// Use GetEffectiveDsn() to check environment variable first
+			FString EffectiveDsn = settings->GetEffectiveDsn();
+			if (!EffectiveDsn.IsEmpty())
+			{
+				options.dsn = EffectiveDsn.GetNSString();
+			}
+			else
+			{
+				UE_LOG(LogSentrySdk, Warning, TEXT("No DSN available from environment variable SENTRY_DSN or configuration"));
+			}
 #if WITH_EDITOR
 			if(!settings->EditorDsn.IsEmpty()) {
 				options.dsn = settings->EditorDsn.GetNSString();

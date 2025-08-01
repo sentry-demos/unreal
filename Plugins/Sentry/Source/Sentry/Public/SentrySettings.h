@@ -186,7 +186,7 @@ class SENTRY_API USentrySettings : public UObject
 	bool InitAutomatically;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "General",
-		Meta = (DisplayName = "DSN", ToolTip = "The DSN (Data Source Name) tells the SDK where to send the events to. Get your DSN in the Sentry dashboard."))
+		Meta = (DisplayName = "DSN", ToolTip = "The DSN (Data Source Name) tells the SDK where to send the events to. Get your DSN in the Sentry dashboard. Environment variable SENTRY_DSN takes precedence if set."))
 	FString Dsn;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "General",
@@ -365,6 +365,12 @@ class SENTRY_API USentrySettings : public UObject
 #endif
 
 	static FString GetFormattedReleaseName();
+
+	/**
+	 * Gets the effective DSN to use, checking environment variable SENTRY_DSN first,
+	 * then falling back to the configured DSN.
+	 */
+	FString GetEffectiveDsn() const;
 
 	bool IsDirty() const;
 	void ClearDirtyFlag();

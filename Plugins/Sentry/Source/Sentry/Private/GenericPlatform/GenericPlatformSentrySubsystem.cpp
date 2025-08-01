@@ -287,7 +287,16 @@ void FGenericPlatformSentrySubsystem::InitWithSettings(const USentrySettings* se
 		? *settings->Release
 		: *settings->GetFormattedReleaseName()));
 
-	sentry_options_set_dsn(options, TCHAR_TO_ANSI(*settings->Dsn));
+	// Use GetEffectiveDsn() to check environment variable first
+	FString EffectiveDsn = settings->GetEffectiveDsn();
+	if (!EffectiveDsn.IsEmpty())
+	{
+		sentry_options_set_dsn(options, TCHAR_TO_ANSI(*EffectiveDsn));
+	}
+	else
+	{
+		UE_LOG(LogSentrySdk, Warning, TEXT("No DSN available from environment variable SENTRY_DSN or configuration"));
+	}
 #if WITH_EDITOR
 	if (!settings->EditorDsn.IsEmpty())
 	{

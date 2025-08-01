@@ -28,6 +28,8 @@ Set the `SENTRY_DSN` environment variable:
 export SENTRY_DSN="https://your-dsn@your-org.ingest.sentry.io/project-id"
 ```
 
+The environment variable takes precedence over the configuration file setting.
+
 ### Configuration File (Fallback)
 If no environment variable is set, the DSN can be configured in `Config/DefaultEngine.ini`:
 ```ini
@@ -35,7 +37,7 @@ If no environment variable is set, the DSN can be configured in `Config/DefaultE
 Dsn="https://your-dsn@your-org.ingest.sentry.io/project-id"
 ```
 
-**Note:** For security reasons, it's recommended to use environment variables instead of hardcoding the DSN in configuration files.
+**Note:** For security reasons, it's recommended to use environment variables instead of hardcoding the DSN in configuration files. The environment variable `SENTRY_DSN` will override any DSN set in the configuration file.
 
 ## Debug Symbol Upload
 

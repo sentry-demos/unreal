@@ -1,6 +1,8 @@
 name: run-demo
 
 on:
+  # schedule:
+  #   - cron: "*/50 * * * *" # every 50 minutes
   workflow_dispatch: # allows manual runs
 
 concurrency:
@@ -39,7 +41,7 @@ jobs:
             --env SENTRY_ORG="${{ env.SENTRY_ORG }}" `
             --env SENTRY_AUTH_TOKEN="${{ env.SENTRY_AUTH_TOKEN }}" `
             --env SENTRY_PROJECT="${{ env.SENTRY_PROJECT }}" `
-            ghcr.io/getsentry/unreal-docker:${{ env.UE_VERSION }}
+            adamrehn/ue4-minimal:5.5
 
       - uses: actions/checkout@v4
         with:
