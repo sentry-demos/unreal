@@ -36,6 +36,8 @@ jobs:
           submodules: recursive
 
       - name: Build game
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           docker exec unreal C:\UnrealEngine\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun `
             -project=C:\workspace\checkout\SentryTower.uproject `
@@ -54,6 +56,7 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           docker exec unreal C:\workspace\checkout\Plugins\Sentry\Scripts\upload-debug-symbols-win.bat `
             Win64 `
