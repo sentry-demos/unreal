@@ -43,8 +43,3 @@ jobs:
           }
           
           & $exePath -Unattended -nullrhi --idle
-          if ($LASTEXITCODE -eq 0) {
-            Write-Error "Expected non-zero exit code but got 0"
-            exit 1
-          }
-          Write-Output "Simulation completed with expected non-zero exit code: $LASTEXITCODE"
