@@ -1,0 +1,26 @@
+name: run-demo
+
+on:
+  # schedule:
+  #   - cron: '0 */2 * * *' # every two hours
+  workflow_dispatch:
+
+jobs:
+  run:
+    name: Run Demo
+    runs-on: windows-latest
+
+    steps:
+      - name: Download SentryTower.exe
+        uses: actions/download-artifact@v4
+        with:
+          name: SentryTower
+
+      - name: Run simulation
+        run: |
+          .\SentryTower.exe -Unattended -nullrhi --idle
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "Expected non-zero exit code but got 0"
+            exit 1
+          }
+          Write-Output "Simulation completed with expected non-zero exit code: $LASTEXITCODE"

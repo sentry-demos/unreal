@@ -1,4 +1,4 @@
-name: run-demo
+name: build-and-release-demo
 
 on:
   # schedule:
@@ -49,6 +49,9 @@ jobs:
             -package `
             -archive
 
-      - name: Run simulation
-        run: |
-          docker exec unreal C:\workspace\checkout\Builds\Windows\SentryTower.exe -Unattended -nullrhi --idle
+      - name: Upload SentryTower.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SentryTower
+          path: checkout/Builds/Windows/SentryTower.exe
+          retention-days: 90
