@@ -27,8 +27,16 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.get-run.outputs.run-id }}
 
-      - name: Run simulation
+      - name: Start Windows Docker Container
         run: |
           $downloadPath = "${{ steps.download.outputs.download-path }}"
-          Write-Output "Download path: $downloadPath"          
-          docker run --rm -v "${downloadPath}:C:\app" mcr.microsoft.com/windows/server:ltsc2022 cmd /c "cd C:\app && SentryTower.exe -Unattended -nullrhi --idle"
+          Write-Output "Download path: $downloadPath"
+          docker run -td `
+            --name unreal `
+            --volume "${downloadPath}:C:\workspace" `
+            --workdir C:\workspace `
+            mcr.microsoft.com/windows/server:ltsc2022
+      
+      - name: Run Simulation
+        run: |
+          docker exec unreal C:\workspace\SentryTower.exe -Unattended -nullrhi --idle
