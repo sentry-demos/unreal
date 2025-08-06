@@ -42,4 +42,8 @@ jobs:
             exit 1
           }
           
-          & $exePath -Unattended -nullrhi --idle
+          Write-Output "Running: $exePath -Unattended -nullrhi --idle"
+          $output = & $exePath -Unattended -nullrhi --idle 2>&1
+          Write-Output "Game console output:"
+          Write-Output $output
+          Write-Output "Exit code: $LASTEXITCODE"
