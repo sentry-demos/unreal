@@ -18,7 +18,7 @@ jobs:
           $runId = $runs.workflow_runs[0].id
           echo "run-id=$runId" >> $env:GITHUB_OUTPUT
 
-      - name: Download SentryTower.exe
+      - name: Download SentryTower
         uses: actions/download-artifact@v4
         with:
           name: SentryTower
@@ -26,8 +26,20 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.get-run.outputs.run-id }}
 
+      - name: Extract artifact
+        run: |
+          if (!(Test-Path "SentryTower.zip")) {
+            Write-Error "SentryTower.zip not found"
+            exit 1
+          }
+          Expand-Archive -Path "SentryTower.zip" -DestinationPath "." -Force
+
       - name: Run simulation
         run: |
+          if (!(Test-Path "SentryTower.exe")) {
+            Write-Error "SentryTower.exe not found after extraction"
+            exit 1
+          }
           .\SentryTower.exe -Unattended -nullrhi --idle
           if ($LASTEXITCODE -eq 0) {
             Write-Error "Expected non-zero exit code but got 0"
