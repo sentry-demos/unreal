@@ -19,23 +19,26 @@ jobs:
           echo "run-id=$runId" >> $env:GITHUB_OUTPUT
 
       - name: Download SentryTower
+        id: download
         uses: actions/download-artifact@v4
         with:
           name: SentryTower
-          path: ./artifacts
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           run-id: ${{ steps.get-run.outputs.run-id }}
 
       - name: Extract artifact
         run: |
-          # List downloaded files for debugging
-          Get-ChildItem -Path "./artifacts" -Filter "*.zip"
+          $downloadPath = "${{ steps.download.outputs.download-path }}"
+          Write-Output "Download path: $downloadPath"
+          
+          # List files in download path
+          Get-ChildItem -Path $downloadPath
           
           # Find the zip file
-          $zipFile = Get-ChildItem -Path "./artifacts" -Filter "*.zip" | Select-Object -First 1
+          $zipFile = Get-ChildItem -Path $downloadPath -Filter "*.zip" | Select-Object -First 1
           if (!$zipFile) {
-            Write-Error "No zip file found in artifacts directory"
+            Write-Error "No zip file found in download path: $downloadPath"
             exit 1
           }
           
