@@ -16,7 +16,7 @@ enum class ESentryTracesSamplingType : uint8
 {
 	// Use uniform sample rate for all transactions
 	UniformSampleRate,
-	// Control the sample rate based on the transaction itself and the context in which it's captured (not implemented)
+	// Control the sample rate based on the transaction itself and the context in which it's captured
 	TracesSampler
 };
 
@@ -189,10 +189,6 @@ class SENTRY_API USentrySettings : public UObject
 		Meta = (DisplayName = "DSN", ToolTip = "The DSN (Data Source Name) tells the SDK where to send the events to. Get your DSN in the Sentry dashboard."))
 	FString Dsn;
 
-	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "General",
-		Meta = (DisplayName = "Editor DSN", ToolTip = "The Editor DSN (Data Source Name) if you want to isolate editor crashes from packaged game crashes, defaults to Dsn if not provided."))
-	FString EditorDsn;
-
 	UPROPERTY(Config, EditAnywhere, Category = "General",
 		Meta = (DisplayName = "Enable verbose logging", ToolTip = "Flag indicating whether to enable verbose logging."))
 	bool Debug;
@@ -315,9 +311,13 @@ class SENTRY_API USentrySettings : public UObject
 	float TracesSampleRate;
 
 	UPROPERTY(Config, EditAnywhere, Category = "General|Performance Monitoring",
-		Meta = (DisplayName = "Traces sampler", ToolTip = "Custom handler for determining traces sample rate based on the sampling context.",
+		Meta = (DisplayName = "Traces sampler (for Android/Apple only)", ToolTip = "Custom handler for determining traces sample rate based on the sampling context.",
 			EditCondition = "EnableTracing && SamplingType == ESentryTracesSamplingType::TracesSampler", EditConditionHides))
 	TSubclassOf<USentryTraceSampler> TracesSampler;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "General|Misc",
+		Meta = (DisplayName = "Editor DSN", ToolTip = "The Editor DSN (Data Source Name) if you want to isolate editor crashes from packaged game crashes, defaults to Dsn if not provided."))
+	FString EditorDsn;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "General|Misc",
 		Meta = (DisplayName = "Promote values to tags"))
@@ -372,6 +372,13 @@ class SENTRY_API USentrySettings : public UObject
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
+	/**
+	 * Gets the effective DSN based on current execution context.
+	 *
+	 * @return Editor DSN when running in the editor and one is set; otherwise, falls back to the default DSN.
+	 */
+	FString GetEffectiveDsn() const;
+
 	static FString GetFormattedReleaseName();
 
 	bool IsDirty() const;
@@ -381,7 +388,6 @@ private:
 	FString GetDefaultEnvironmentName();
 
 	void LoadDebugSymbolsProperties();
-	void CheckLegacySettings();
 
 	bool bIsDirty;
 };

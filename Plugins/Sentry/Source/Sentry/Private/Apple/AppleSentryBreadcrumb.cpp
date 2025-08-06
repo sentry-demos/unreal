@@ -5,10 +5,11 @@
 #include "Infrastructure/AppleSentryConverters.h"
 
 #include "Convenience/AppleSentryInclude.h"
+#include "Convenience/AppleSentryMacro.h"
 
 FAppleSentryBreadcrumb::FAppleSentryBreadcrumb()
 {
-	BreadcrumbApple = [[SentryBreadcrumb alloc] init];
+	BreadcrumbApple = [[SENTRY_APPLE_CLASS(SentryBreadcrumb) alloc] init];
 }
 
 FAppleSentryBreadcrumb::FAppleSentryBreadcrumb(SentryBreadcrumb* breadcrumb)
@@ -56,14 +57,14 @@ FString FAppleSentryBreadcrumb::GetCategory() const
 	return FString(BreadcrumbApple.category);
 }
 
-void FAppleSentryBreadcrumb::SetData(const TMap<FString, FString>& data)
+void FAppleSentryBreadcrumb::SetData(const TMap<FString, FSentryVariant>& data)
 {
-	BreadcrumbApple.data = FAppleSentryConverters::StringMapToNative(data);
+	BreadcrumbApple.data = FAppleSentryConverters::VariantMapToNative(data);
 }
 
-TMap<FString, FString> FAppleSentryBreadcrumb::GetData() const
+TMap<FString, FSentryVariant> FAppleSentryBreadcrumb::GetData() const
 {
-	return FAppleSentryConverters::StringMapToUnreal(BreadcrumbApple.data);
+	return FAppleSentryConverters::VariantMapToUnreal(BreadcrumbApple.data);
 }
 
 void FAppleSentryBreadcrumb::SetLevel(ESentryLevel level)

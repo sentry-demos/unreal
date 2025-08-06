@@ -1,14 +1,9 @@
-﻿// Copyright (c) 2025 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "SentrySamplingContext.h"
 #include "SentryTransactionContext.h"
 
 #include "HAL/PlatformSentrySamplingContext.h"
-
-void USentrySamplingContext::Initialize()
-{
-	NativeImpl = CreateSharedSentrySamplingContext();
-}
 
 USentryTransactionContext* USentrySamplingContext::GetTransactionContext() const
 {

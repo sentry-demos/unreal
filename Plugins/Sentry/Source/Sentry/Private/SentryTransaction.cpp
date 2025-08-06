@@ -1,11 +1,10 @@
 // Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "SentryTransaction.h"
-
 #include "SentryDefines.h"
 #include "SentrySpan.h"
 
-#include "Interface/SentryTransactionInterface.h"
+#include "HAL/PlatformSentryTransaction.h"
 
 USentrySpan* USentryTransaction::StartChildSpan(const FString& Operation, const FString& Description)
 {
@@ -87,7 +86,7 @@ void USentryTransaction::RemoveTag(const FString& key)
 	NativeImpl->RemoveTag(key);
 }
 
-void USentryTransaction::SetData(const FString& key, const TMap<FString, FString>& values)
+void USentryTransaction::SetData(const FString& key, const TMap<FString, FSentryVariant>& values)
 {
 	if (!NativeImpl || NativeImpl->IsFinished())
 		return;
