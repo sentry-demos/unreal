@@ -22,17 +22,25 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: SentryTower
+          path: ./artifacts
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           run-id: ${{ steps.get-run.outputs.run-id }}
 
       - name: Extract artifact
         run: |
-          if (!(Test-Path "SentryTower.zip")) {
-            Write-Error "SentryTower.zip not found"
+          # List downloaded files for debugging
+          Get-ChildItem -Path "./artifacts" -Filter "*.zip"
+          
+          # Find the zip file
+          $zipFile = Get-ChildItem -Path "./artifacts" -Filter "*.zip" | Select-Object -First 1
+          if (!$zipFile) {
+            Write-Error "No zip file found in artifacts directory"
             exit 1
           }
-          Expand-Archive -Path "SentryTower.zip" -DestinationPath "." -Force
+          
+          Write-Output "Extracting: $($zipFile.Name)"
+          Expand-Archive -Path $zipFile.FullName -DestinationPath "." -Force
 
       - name: Run simulation
         run: |
