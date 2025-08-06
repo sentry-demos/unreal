@@ -30,46 +30,5 @@ jobs:
       - name: Run simulation
         run: |
           $downloadPath = "${{ steps.download.outputs.download-path }}"
-          Write-Output "Download path: $downloadPath"
-          if (!(Test-Path $downloadPath)) {
-            Write-Error "Download path does not exist: $downloadPath"
-            exit 1
-          }
-          
-          # List all files in download path
-          Write-Output "Files in download path:"
-          Get-ChildItem $downloadPath -Recurse
-          
-          $exePath = Join-Path $downloadPath "SentryTower.exe"
-          Write-Output "Looking for executable at: $exePath"
-          
-          if (!(Test-Path $exePath)) {
-            Write-Error "SentryTower.exe not found at: $exePath"
-            exit 1
-          }
-          
-          # Check file properties
-          $fileInfo = Get-Item $exePath
-          Write-Output "File size: $($fileInfo.Length) bytes"
-          Write-Output "File exists: $(Test-Path $exePath)"
-          
-          Write-Output "Running: `"$exePath`" -Unattended -nullrhi --idle"
-          try {
-            $process = Start-Process -FilePath $exePath -ArgumentList "-Unattended", "-nullrhi", "--idle" -Wait -PassThru -RedirectStandardOutput "output.txt" -RedirectStandardError "error.txt" -NoNewWindow
-            
-            Write-Output "Process completed with exit code: $($process.ExitCode)"
-            
-            if (Test-Path "output.txt") {
-              Write-Output "Standard Output:"
-              Get-Content "output.txt"
-            }
-            
-            if (Test-Path "error.txt") {
-              Write-Output "Standard Error:"
-              Get-Content "error.txt"
-            }
-            
-            $LASTEXITCODE = $process.ExitCode
-          } catch {
-            Write-Error "Failed to execute: $($_.Exception.Message)"
-          }
+          Write-Output "Download path: $downloadPath"          
+          docker run --rm -v "${downloadPath}:C:\app" mcr.microsoft.com/windows/server:ltsc2022 cmd /c "cd C:\app && SentryTower.exe -Unattended -nullrhi --idle"
