@@ -55,10 +55,21 @@ jobs:
           
           Write-Output "Running: `"$exePath`" -Unattended -nullrhi --idle"
           try {
-            $output = & $exePath -Unattended -nullrhi --idle 2>&1
-            Write-Output "Game console output:"
-            Write-Output $output
-            Write-Output "Exit code: $LASTEXITCODE"
+            $process = Start-Process -FilePath $exePath -ArgumentList "-Unattended", "-nullrhi", "--idle" -Wait -PassThru -RedirectStandardOutput "output.txt" -RedirectStandardError "error.txt" -NoNewWindow
+            
+            Write-Output "Process completed with exit code: $($process.ExitCode)"
+            
+            if (Test-Path "output.txt") {
+              Write-Output "Standard Output:"
+              Get-Content "output.txt"
+            }
+            
+            if (Test-Path "error.txt") {
+              Write-Output "Standard Error:"
+              Get-Content "error.txt"
+            }
+            
+            $LASTEXITCODE = $process.ExitCode
           } catch {
             Write-Error "Failed to execute: $($_.Exception.Message)"
           }
