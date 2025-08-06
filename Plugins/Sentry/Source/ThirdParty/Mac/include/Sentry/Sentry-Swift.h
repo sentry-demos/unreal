@@ -278,6 +278,7 @@ typedef unsigned int swift_uint4  __attribute__((__ext_vector_type__(4)));
 #pragma clang diagnostic ignored "-Watimport-in-framework-header"
 #endif
 @import CoreFoundation;
+@import Dispatch;
 @import Foundation;
 @import MetricKit;
 @import ObjectiveC;
@@ -321,35 +322,12 @@ SWIFT_CLASS("_TtC6Sentry19HTTPHeaderSanitizer")
 
 
 
+@class SentryExperimentalOptions;
 
-SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
-@protocol SentryRRWebEvent <SentrySerializable>
-@end
-
-enum SentryRRWebEventType : NSInteger;
-@class NSDate;
-
-SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
-@interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
-@property (nonatomic, readonly) enum SentryRRWebEventType type;
-@property (nonatomic, readonly, copy) NSDate * _Nonnull timestamp;
-@property (nonatomic, readonly, copy) NSDictionary<NSString *, id> * _Nullable data;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data OBJC_DESIGNATED_INITIALIZER;
-- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
-- (nonnull instancetype)init SWIFT_UNAVAILABLE;
-+ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry14RRWebMoveEvent")
-@interface RRWebMoveEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry15RRWebTouchEvent")
-@interface RRWebTouchEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
+@interface SentryOptions (SWIFT_EXTENSION(Sentry))
+/// This aggregates options for experimental features.
+/// Be aware that the options available for experimental can change at any time.
+@property (nonatomic, readonly, strong) SentryExperimentalOptions * _Nonnull experimental;
 @end
 
 
@@ -406,6 +384,7 @@ SWIFT_CLASS("_TtC6Sentry26SentryBaggageSerialization")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+@class NSDate;
 
 /// We need a protocol to expose SentryCurrentDateProvider to tests.
 /// Mocking the previous private class from <code>SentryTestUtils</code> stopped working in Xcode 16.
@@ -430,7 +409,22 @@ SWIFT_CLASS("_TtC6Sentry32SentryDefaultCurrentDateProvider")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryOptions;
+
+SWIFT_CLASS("_TtC6Sentry26SentryDispatchQueueWrapper")
+@interface SentryDispatchQueueWrapper : NSObject
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithName:(char const * _Nonnull)name attributes:(dispatch_queue_attr_t _Nullable)attributes OBJC_DESIGNATED_INITIALIZER;
+@property (nonatomic, readonly, strong) dispatch_queue_t _Nonnull queue;
+- (void)dispatchAsyncWithBlock:(void (^ _Nonnull)(void))block;
+- (void)dispatchAsyncOnMainQueue:(void (^ _Nonnull)(void))block;
+- (void)dispatchSyncOnMainQueue:(void (^ _Nonnull)(void))block;
+- (void)dispatchSyncOnMainQueue:(void (^ _Nonnull)(void))block timeout:(double)timeout;
+- (void)dispatchAfter:(NSTimeInterval)interval block:(void (^ _Nonnull)(void))block;
+- (void)dispatchOnce:(long * _Nonnull)predicate block:(void (^ _Nonnull)(void))block;
+@property (nonatomic, readonly) BOOL shouldDispatchCancel;
+@property (nonatomic, readonly) BOOL shouldCreateDispatchBlock;
+@end
+
 
 SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @interface SentryEnabledFeaturesBuilder : NSObject
@@ -439,8 +433,26 @@ SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @end
 
 
+/// Subclass of SentryEvent so we can add the Decodable implementation via a Swift extension. We need
+/// this due to our mixed use of public Swift and ObjC classes. We could avoid this class by
+/// converting SentryReplayEvent back to ObjC, but we rather accept this tradeoff as we want to
+/// convert all public classes to Swift in the future. This does not need to be public, but was previously
+/// defined in objc and was public. In the next major version of the SDK we should make it <code>internal</code> and <code>final</code>
+/// and remove the <code>@objc</code> annotation.
+/// @note: We can’t add the extension for Decodable directly on SentryEvent, because we get an error
+/// in SentryReplayEvent: ‘required’ initializer ‘init(from:)’ must be provided by subclass of
+/// ‘Event’ Once we add the initializer with required convenience public init(from decoder: any
+/// Decoder) throws { fatalError(“init(from:) has not been implemented”)
+/// }
+/// we get the error initializer ‘init(from:)’ is declared in extension of ‘Event’ and cannot be
+/// overridden. Therefore, we add the Decodable implementation not on the Event, but to a subclass of
+/// the event.
+SWIFT_CLASS_NAMED("SentryEventDecodable")
+@interface SentryEventDecodable : SentryEvent
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 @class NSData;
-@class SentryEvent;
 
 SWIFT_CLASS("_TtC6Sentry18SentryEventDecoder")
 @interface SentryEventDecoder : NSObject
@@ -465,22 +477,32 @@ SWIFT_CLASS("_TtC6Sentry25SentryExperimentalOptions")
 /// experiment:
 /// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future release.
 @property (nonatomic) BOOL enableFileManagerSwizzling;
+/// A more reliable way to report unhandled C++ exceptions.
+/// This approach hooks into all instances of the <code>__cxa_throw</code> function, which provides a more comprehensive and consistent exception handling across an app’s runtime, regardless of the number of C++ modules or how they’re linked. It helps in obtaining accurate stack traces.
+/// note:
+/// The mechanism of hooking into <code>__cxa_throw</code> could cause issues with symbolication on iOS due to caching of symbol references.
+/// experiment:
+/// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future major release.
+@property (nonatomic) BOOL enableUnhandledCPPExceptionsV2;
 - (void)validateOptions:(NSDictionary<NSString *, id> * _Nullable)options;
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-enum SentryFeedbackSource : NSInteger;
+@class NSMutableSet;
+
+SWIFT_CLASS("_TtC6Sentry19SentryExtraPackages")
+@interface SentryExtraPackages : NSObject
++ (void)addPackageName:(NSString * _Nullable)name version:(NSString * _Nullable)version;
++ (NSMutableSet * _Nonnull)getPackages SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 @class SentryId;
+enum SentryFeedbackSource : NSInteger;
 
 SWIFT_CLASS("_TtC6Sentry14SentryFeedback")
 @interface SentryFeedback : NSObject
-@property (nonatomic, copy) NSString * _Nullable name;
-@property (nonatomic, copy) NSString * _Nullable email;
-@property (nonatomic, copy) NSString * _Nonnull message;
-@property (nonatomic) enum SentryFeedbackSource source;
 @property (nonatomic, readonly, strong) SentryId * _Nonnull eventId;
-/// The event id that this feedback is associated with, like a crash report.
-@property (nonatomic, strong) SentryId * _Nullable associatedEventId;
 /// \param associatedEventId The ID for an event you’d like associated with the feedback. 
 ///
 /// \param attachments Data objects for any attachments. Currently the web UI only supports showing one attached image, like for a screenshot. 
@@ -504,9 +526,6 @@ typedef SWIFT_ENUM(NSInteger, SentryFeedbackSource, open) {
 
 @interface SentryFeedback (SWIFT_EXTENSION(Sentry))
 /// note:
-/// This dictionary is to pass to the block <code>SentryUserFeedbackConfiguration.onSubmitSuccess</code>, describing the contents submitted. This is different from the serialized form of the feedback for envelope transmission, because there are some internal details in that serialization that are irrelevant to the consumer and are not available at the time <code>onSubmitSuccess</code> is called.
-- (NSDictionary<NSString *, id> * _Nonnull)dataDictionary SWIFT_WARN_UNUSED_RESULT;
-/// note:
 /// Currently there is only a single attachment possible, for the screenshot, of which there can be only one.
 - (NSArray<SentryAttachment *> * _Nonnull)attachmentsForEnvelope SWIFT_WARN_UNUSED_RESULT;
 @end
@@ -521,6 +540,17 @@ SWIFT_CLASS("_TtC6Sentry18SentryFileContents")
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
+
+@class NSURL;
+
+SWIFT_PROTOCOL("_TtP6Sentry25SentryFileManagerProtocol_")
+@protocol SentryFileManagerProtocol
+- (void)moveState:(NSString * _Nonnull)stateFilePath toPreviousState:(NSString * _Nonnull)previousStateFilePath;
+- (NSData * _Nullable)readDataFromPath:(NSString * _Nonnull)path error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
+- (BOOL)writeData:(NSData * _Nonnull)data toPath:(NSString * _Nonnull)path;
+- (void)removeFileAtPath:(NSString * _Nonnull)path;
+- (NSURL * _Nonnull)getSentryPathAsURL SWIFT_WARN_UNUSED_RESULT;
+@end
 
 
 SWIFT_CLASS("_TtC6Sentry23SentryFramesDelayResult")
@@ -575,41 +605,12 @@ SWIFT_CLASS("_TtC6Sentry17SentryLevelHelper")
 @end
 
 
-
-/// A note on the thread safety:
-/// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
-/// Still, you can use log from multiple threads. The problem is that when you call configure while
-/// calling log from multiple threads, you experience a race condition. It can take a bit until all
-/// threads know the new config. As the SDK should only call configure once when starting, we do accept
-/// this race condition. Adding locks for evaluating the log level for every log invocation isn’t
-/// acceptable, as this adds a significant overhead for every log call. Therefore, we exclude SentryLog
-/// from the ThreadSanitizer as it produces false positives. The tests call configure multiple times,
-/// and the thread sanitizer would surface these race conditions. We accept these race conditions for
-/// the log messages in the tests over adding locking for all log messages.
-SWIFT_CLASS("_TtC6Sentry9SentryLog")
-@interface SentryLog : NSObject
-+ (void)logWithMessage:(NSString * _Nonnull)message andLevel:(enum SentryLevel)level;
-/// @return @c YES if the current logging configuration will log statements at the current level,
-/// @c NO if not.
-+ (BOOL)willLogAtLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
-- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
-@end
-
-
-
-SWIFT_CLASS("_TtC6Sentry21SentryLogSwiftSupport")
-@interface SentryLogSwiftSupport : NSObject
-+ (void)configure:(BOOL)isDebug diagnosticLevel:(enum SentryLevel)diagnosticLevel;
-- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
-@end
-
 @class SentryMXFrame;
 
 SWIFT_CLASS("_TtC6Sentry17SentryMXCallStack")
 @interface SentryMXCallStack : NSObject
 @property (nonatomic, copy) NSArray<SentryMXFrame *> * _Nonnull callStackRootFrames;
 @property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull flattenedRootFrames;
-- (nonnull instancetype)initWithThreadAttributed:(BOOL)threadAttributed rootFrames:(NSArray<SentryMXFrame *> * _Nonnull)rootFrames OBJC_DESIGNATED_INITIALIZER;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -620,8 +621,6 @@ SWIFT_CLASS("_TtC6Sentry21SentryMXCallStackTree")
 @interface SentryMXCallStackTree : NSObject
 @property (nonatomic, readonly, copy) NSArray<SentryMXCallStack *> * _Nonnull callStacks;
 @property (nonatomic, readonly) BOOL callStackPerThread;
-- (nonnull instancetype)initWithCallStacks:(NSArray<SentryMXCallStack *> * _Nonnull)callStacks callStackPerThread:(BOOL)callStackPerThread OBJC_DESIGNATED_INITIALIZER;
-+ (SentryMXCallStackTree * _Nullable)fromData:(NSData * _Nonnull)data error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -634,8 +633,6 @@ SWIFT_CLASS("_TtC6Sentry13SentryMXFrame")
 @property (nonatomic, copy) NSString * _Nullable binaryName;
 @property (nonatomic) uint64_t address;
 @property (nonatomic, copy) NSArray<SentryMXFrame *> * _Nullable subFrames;
-@property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull frames;
-@property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull framesIncludingSelf;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -645,7 +642,6 @@ SWIFT_CLASS("_TtC6Sentry13SentryMXFrame")
 
 SWIFT_CLASS("_TtC6Sentry15SentryMXManager") SWIFT_AVAILABILITY(watchos,unavailable) SWIFT_AVAILABILITY(tvos,unavailable) SWIFT_AVAILABILITY(maccatalyst,introduced=15.0) SWIFT_AVAILABILITY(macos,introduced=12.0) SWIFT_AVAILABILITY(ios,introduced=15.0)
 @interface SentryMXManager : NSObject <MXMetricManagerSubscriber>
-@property (nonatomic, readonly) BOOL disableCrashDiagnostics;
 - (nonnull instancetype)initWithDisableCrashDiagnostics:(BOOL)disableCrashDiagnostics OBJC_DESIGNATED_INITIALIZER;
 @property (nonatomic, weak) id <SentryMXManagerDelegate> _Nullable delegate;
 - (void)receiveReports;
@@ -769,58 +765,36 @@ typedef SWIFT_ENUM(NSInteger, SentryProfileLifecycle, open) {
 };
 
 
+SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
+@protocol SentryRRWebEvent <SentrySerializable>
+@end
+
+
+SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
+@interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
 SWIFT_CLASS("_TtC6Sentry22SentryRRWebCustomEvent")
 @interface SentryRRWebCustomEvent : SentryRRWebEvent
-@property (nonatomic, readonly, copy) NSString * _Nonnull tag;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
 @end
 
 
 SWIFT_CLASS("_TtC6Sentry26SentryRRWebBreadcrumbEvent")
 @interface SentryRRWebBreadcrumbEvent : SentryRRWebCustomEvent
 - (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp category:(NSString * _Nonnull)category message:(NSString * _Nullable)message level:(enum SentryLevel)level data:(NSDictionary<NSString *, id> * _Nullable)data OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
 @end
 
 
 
-
-typedef SWIFT_ENUM(NSInteger, SentryRRWebEventType, closed) {
-  SentryRRWebEventTypeNone = 0,
-  SentryRRWebEventTypeTouch = 3,
-  SentryRRWebEventTypeMeta = 4,
-  SentryRRWebEventTypeCustom = 5,
-};
-
-
-SWIFT_CLASS("_TtC6Sentry20SentryRRWebMetaEvent")
-@interface SentryRRWebMetaEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp height:(NSInteger)height width:(NSInteger)width OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
-@end
-
-@class SentryReplayOptions;
-
-SWIFT_CLASS("_TtC6Sentry23SentryRRWebOptionsEvent")
-@interface SentryRRWebOptionsEvent : SentryRRWebCustomEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp customOptions:(NSDictionary<NSString *, id> * _Nonnull)customOptions OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp options:(SentryReplayOptions * _Nonnull)options OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
-@end
 
 
 SWIFT_CLASS("_TtC6Sentry20SentryRRWebSpanEvent")
 @interface SentryRRWebSpanEvent : SentryRRWebCustomEvent
 - (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp endTimestamp:(NSDate * _Nonnull)endTimestamp operation:(NSString * _Nonnull)operation description:(NSString * _Nonnull)description data:(NSDictionary<NSString *, id> * _Nonnull)data OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry21SentryRRWebVideoEvent")
-@interface SentryRRWebVideoEvent : SentryRRWebCustomEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp segmentId:(NSInteger)segmentId size:(NSInteger)size duration:(NSTimeInterval)duration encoding:(NSString * _Nonnull)encoding container:(NSString * _Nonnull)container height:(NSInteger)height width:(NSInteger)width frameCount:(NSInteger)frameCount frameRateType:(NSString * _Nonnull)frameRateType frameRate:(NSInteger)frameRate left:(NSInteger)left top:(NSInteger)top OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
 @end
 
 
@@ -863,7 +837,8 @@ SWIFT_CLASS("_TtC6Sentry17SentryReplayEvent")
 /// that appear during the duration of the replay segment.
 @property (nonatomic, copy) NSArray<NSString *> * _Nullable urls;
 - (nonnull instancetype)initWithEventId:(SentryId * _Nonnull)eventId replayStartTimestamp:(NSDate * _Nonnull)replayStartTimestamp replayType:(enum SentryReplayType)replayType segmentId:(NSInteger)segmentId OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)init;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 - (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 @end
 
@@ -981,10 +956,6 @@ SWIFT_CLASS("_TtC6Sentry19SentryReplayOptions")
 /// note:
 /// See  <code>SentryReplayOptions.DefaultValues.maximumDuration</code> for the default value.
 @property (nonatomic) NSTimeInterval maximumDuration;
-/// Used by hybrid SDKs to be able to configure SDK info for Session Replay
-/// note:
-/// See <code>SentryReplayOptions.DefaultValues.sdkInfo</code> for the default value.
-@property (nonatomic, copy) NSDictionary<NSString *, id> * _Nullable sdkInfo;
 /// Initialize session replay options disabled
 /// note:
 /// This initializer is added for Objective-C compatibility, as constructors with default values
@@ -1033,18 +1004,7 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayQuality, open) {
 
 SWIFT_CLASS("_TtC6Sentry21SentryReplayRecording")
 @interface SentryReplayRecording : NSObject
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayEncoding;)
-+ (NSString * _Nonnull)SentryReplayEncoding SWIFT_WARN_UNUSED_RESULT;
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayContainer;)
-+ (NSString * _Nonnull)SentryReplayContainer SWIFT_WARN_UNUSED_RESULT;
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayFrameRateType;)
-+ (NSString * _Nonnull)SentryReplayFrameRateType SWIFT_WARN_UNUSED_RESULT;
-@property (nonatomic, readonly) NSInteger segmentId;
-@property (nonatomic, readonly, copy) NSArray<id <SentryRRWebEvent>> * _Nonnull events;
-@property (nonatomic, readonly) NSInteger height;
-@property (nonatomic, readonly) NSInteger width;
 - (nonnull instancetype)initWithSegmentId:(NSInteger)segmentId video:(SentryVideoInfo * _Nonnull)video extraEvents:(NSArray<id <SentryRRWebEvent>> * _Nonnull)extraEvents;
-- (nonnull instancetype)initWithSegmentId:(NSInteger)segmentId size:(NSInteger)size start:(NSDate * _Nonnull)start duration:(NSTimeInterval)duration frameCount:(NSInteger)frameCount frameRate:(NSInteger)frameRate height:(NSInteger)height width:(NSInteger)width extraEvents:(NSArray<id <SentryRRWebEvent>> * _Nullable)extraEvents OBJC_DESIGNATED_INITIALIZER;
 - (NSDictionary<NSString *, id> * _Nonnull)headerForReplayRecording SWIFT_WARN_UNUSED_RESULT;
 - (NSArray<NSDictionary<NSString *, id> *> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
@@ -1058,6 +1018,34 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayType, open) {
 
 
 
+/// A note on the thread safety:
+/// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
+/// Still, you can use log from multiple threads. The problem is that when you call configure while
+/// calling log from multiple threads, you experience a race condition. It can take a bit until all
+/// threads know the new config. As the SDK should only call configure once when starting, we do accept
+/// this race condition. Adding locks for evaluating the log level for every log invocation isn’t
+/// acceptable, as this adds a significant overhead for every log call. Therefore, we exclude SentryLog
+/// from the ThreadSanitizer as it produces false positives. The tests call configure multiple times,
+/// and the thread sanitizer would surface these race conditions. We accept these race conditions for
+/// the log messages in the tests over adding locking for all log messages.
+SWIFT_CLASS("_TtC6Sentry12SentrySDKLog")
+@interface SentrySDKLog : NSObject
++ (void)logWithMessage:(NSString * _Nonnull)message andLevel:(enum SentryLevel)level;
+/// @return @c YES if the current logging configuration will log statements at the current level,
+/// @c NO if not.
++ (BOOL)willLogAtLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
+
+SWIFT_CLASS("_TtC6Sentry19SentrySDKLogSupport")
+@interface SentrySDKLogSupport : NSObject
++ (void)configure:(BOOL)isDebug diagnosticLevel:(enum SentryLevel)diagnosticLevel;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
 SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 @interface SentrySRDefaultBreadcrumbConverter : NSObject <SentryReplayBreadcrumbConverter>
 /// This function will convert the SDK breadcrumbs to session replay breadcrumbs in a format that the front-end understands.
@@ -1067,35 +1055,35 @@ SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryFileManager;
-@class NSURL;
+@class SentryUser;
 
-SWIFT_CLASS("_TtC6Sentry33SentryScopeContextPersistentStore")
-@interface SentryScopeContextPersistentStore : NSObject
-- (nonnull instancetype)initWithFileManager:(SentryFileManager * _Nonnull)fileManager OBJC_DESIGNATED_INITIALIZER;
-- (void)moveCurrentFileToPreviousFile;
+SWIFT_CLASS("_TtC6Sentry26SentryScopePersistentStore")
+@interface SentryScopePersistentStore : NSObject
+- (nullable instancetype)initWithFileManager:(id <SentryFileManagerProtocol> _Nullable)fileManager OBJC_DESIGNATED_INITIALIZER;
+- (void)moveAllCurrentStateToPreviousState;
 - (NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)readPreviousContextFromDisk SWIFT_WARN_UNUSED_RESULT;
-- (void)writeContextToDiskWithContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nonnull)context;
-- (void)deleteContextOnDisk;
-- (void)deletePreviousContextOnDisk;
-/// Path to a state file holding the latest context observed from the scope.
-/// This path is used to keep a persistent copy of the scope context on disk, to be available after
-/// restart of the app.
-@property (nonatomic, readonly, copy) NSURL * _Nonnull contextFileURL;
-/// Path to the previous state file holding the latest context observed from the scope.
-/// This file is overwritten at SDK start and kept as a copy of the last context file until the next
-/// SDK start.
-@property (nonatomic, readonly, copy) NSURL * _Nonnull previousContextFileURL;
+- (SentryUser * _Nullable)readPreviousUserFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSString * _Nullable)readPreviousDistFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSString * _Nullable)readPreviousEnvironmentFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSDictionary<NSString *, NSString *> * _Nullable)readPreviousTagsFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSDictionary<NSString *, id> * _Nullable)readPreviousExtrasFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSArray<NSString *> * _Nullable)readPreviousFingerprintFromDisk SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
-@class SentrySession;
 
-SWIFT_PROTOCOL("_TtP6Sentry21SentrySessionListener_")
-@protocol SentrySessionListener <NSObject>
-- (void)sentrySessionEnded:(SentrySession * _Nonnull)session;
-- (void)sentrySessionStarted:(SentrySession * _Nonnull)session;
+
+
+
+
+
+
+
+SWIFT_CLASS("_TtC6Sentry16SentrySdkPackage")
+@interface SentrySdkPackage : NSObject
++ (NSDictionary<NSString *, NSString *> * _Nullable)global SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
 
@@ -1127,31 +1115,38 @@ SWIFT_PROTOCOL("_TtP6Sentry32SentryUIViewControllerDescriptor_")
 @property (nonatomic, readonly, copy) NSString * _Nonnull sentryName;
 @end
 
+@class SentryDsn;
+@class NSURLRequest;
+
+SWIFT_CLASS("_TtC6Sentry23SentryURLRequestFactory")
+@interface SentryURLRequestFactory : NSObject
++ (NSURLRequest * _Nullable)envelopeRequestWith:(SentryDsn * _Nonnull)dsn data:(NSData * _Nonnull)data error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
++ (NSURLRequest * _Nullable)envelopeRequestWith:(NSURL * _Nonnull)url data:(NSData * _Nonnull)data authHeader:(NSString * _Nullable)authHeader error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 
 SWIFT_CLASS("_TtC6Sentry15SentryVideoInfo")
 @interface SentryVideoInfo : NSObject
 @property (nonatomic, readonly, copy) NSURL * _Nonnull path;
-@property (nonatomic, readonly) NSInteger height;
-@property (nonatomic, readonly) NSInteger width;
-@property (nonatomic, readonly) NSTimeInterval duration;
-@property (nonatomic, readonly) NSInteger frameCount;
-@property (nonatomic, readonly) NSInteger frameRate;
 @property (nonatomic, readonly, copy) NSDate * _Nonnull start;
 @property (nonatomic, readonly, copy) NSDate * _Nonnull end;
-@property (nonatomic, readonly) NSInteger fileSize;
-@property (nonatomic, readonly, copy) NSArray<NSString *> * _Nonnull screens;
-- (nonnull instancetype)initWithPath:(NSURL * _Nonnull)path height:(NSInteger)height width:(NSInteger)width duration:(NSTimeInterval)duration frameCount:(NSInteger)frameCount frameRate:(NSInteger)frameRate start:(NSDate * _Nonnull)start end:(NSDate * _Nonnull)end fileSize:(NSInteger)fileSize screens:(NSArray<NSString *> * _Nonnull)screens OBJC_DESIGNATED_INITIALIZER;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
-@class SentryDispatchQueueWrapper;
 
-SWIFT_CLASS("_TtC6Sentry41SentryWatchdogTerminationContextProcessor")
-@interface SentryWatchdogTerminationContextProcessor : NSObject
-- (nonnull instancetype)initWithDispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper scopeContextStore:(SentryScopeContextPersistentStore * _Nonnull)scopeContextStore OBJC_DESIGNATED_INITIALIZER;
-- (void)setContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)context;
+SWIFT_CLASS("_TtC6Sentry44SentryWatchdogTerminationAttributesProcessor")
+@interface SentryWatchdogTerminationAttributesProcessor : NSObject
+- (nonnull instancetype)initWithDispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper scopePersistentStore:(SentryScopePersistentStore * _Nonnull)scopePersistentStore OBJC_DESIGNATED_INITIALIZER;
 - (void)clear;
+- (void)setContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)context;
+- (void)setUser:(SentryUser * _Nullable)user;
+- (void)setDist:(NSString * _Nullable)dist;
+- (void)setEnvironment:(NSString * _Nullable)environment;
+- (void)setTags:(NSDictionary<NSString *, NSString *> * _Nullable)tags;
+- (void)setExtras:(NSDictionary<NSString *, id> * _Nullable)extras;
+- (void)setFingerprint:(NSArray<NSString *> * _Nullable)fingerprint;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -1176,8 +1171,6 @@ SWIFT_CLASS("_TtC6Sentry20URLSessionTaskHelper")
 
 SWIFT_CLASS("_TtC6Sentry12UrlSanitized")
 @interface UrlSanitized : NSObject
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SENSITIVE_DATA_SUBSTITUTE;)
-+ (NSString * _Nonnull)SENSITIVE_DATA_SUBSTITUTE SWIFT_WARN_UNUSED_RESULT;
 @property (nonatomic, readonly, copy) NSString * _Nullable query;
 @property (nonatomic, readonly, copy) NSArray<NSURLQueryItem *> * _Nullable queryItems;
 @property (nonatomic, readonly, copy) NSString * _Nullable fragment;
@@ -1187,6 +1180,28 @@ SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _No
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
+
+
+/// Adds additional information about what happened to an event.
+/// @deprecated Use <code>SentryFeedback</code>.
+SWIFT_CLASS_NAMED("UserFeedback") SWIFT_DEPRECATED_MSG("Use SentryFeedback.")
+@interface SentryUserFeedback : NSObject <SentrySerializable>
+/// The eventId of the event to which the user feedback is associated.
+@property (nonatomic, readonly, strong) SentryId * _Nonnull eventId;
+/// The name of the user.
+@property (nonatomic, copy) NSString * _Nonnull name;
+/// The email of the user.
+@property (nonatomic, copy) NSString * _Nonnull email;
+/// Comments of the user about what happened.
+@property (nonatomic, copy) NSString * _Nonnull comments;
+/// Initializes SentryUserFeedback and sets the required eventId.
+/// \param eventId The eventId of the event to which the user feedback is associated.
+///
+- (nonnull instancetype)initWithEventId:(SentryId * _Nonnull)eventId OBJC_DESIGNATED_INITIALIZER;
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
 
 #endif
 #if __has_attribute(external_source_symbol)
@@ -1476,6 +1491,7 @@ typedef unsigned int swift_uint4  __attribute__((__ext_vector_type__(4)));
 #pragma clang diagnostic ignored "-Watimport-in-framework-header"
 #endif
 @import CoreFoundation;
+@import Dispatch;
 @import Foundation;
 @import MetricKit;
 @import ObjectiveC;
@@ -1519,35 +1535,12 @@ SWIFT_CLASS("_TtC6Sentry19HTTPHeaderSanitizer")
 
 
 
+@class SentryExperimentalOptions;
 
-SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
-@protocol SentryRRWebEvent <SentrySerializable>
-@end
-
-enum SentryRRWebEventType : NSInteger;
-@class NSDate;
-
-SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
-@interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
-@property (nonatomic, readonly) enum SentryRRWebEventType type;
-@property (nonatomic, readonly, copy) NSDate * _Nonnull timestamp;
-@property (nonatomic, readonly, copy) NSDictionary<NSString *, id> * _Nullable data;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data OBJC_DESIGNATED_INITIALIZER;
-- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
-- (nonnull instancetype)init SWIFT_UNAVAILABLE;
-+ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry14RRWebMoveEvent")
-@interface RRWebMoveEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry15RRWebTouchEvent")
-@interface RRWebTouchEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
+@interface SentryOptions (SWIFT_EXTENSION(Sentry))
+/// This aggregates options for experimental features.
+/// Be aware that the options available for experimental can change at any time.
+@property (nonatomic, readonly, strong) SentryExperimentalOptions * _Nonnull experimental;
 @end
 
 
@@ -1604,6 +1597,7 @@ SWIFT_CLASS("_TtC6Sentry26SentryBaggageSerialization")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+@class NSDate;
 
 /// We need a protocol to expose SentryCurrentDateProvider to tests.
 /// Mocking the previous private class from <code>SentryTestUtils</code> stopped working in Xcode 16.
@@ -1628,7 +1622,22 @@ SWIFT_CLASS("_TtC6Sentry32SentryDefaultCurrentDateProvider")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryOptions;
+
+SWIFT_CLASS("_TtC6Sentry26SentryDispatchQueueWrapper")
+@interface SentryDispatchQueueWrapper : NSObject
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithName:(char const * _Nonnull)name attributes:(dispatch_queue_attr_t _Nullable)attributes OBJC_DESIGNATED_INITIALIZER;
+@property (nonatomic, readonly, strong) dispatch_queue_t _Nonnull queue;
+- (void)dispatchAsyncWithBlock:(void (^ _Nonnull)(void))block;
+- (void)dispatchAsyncOnMainQueue:(void (^ _Nonnull)(void))block;
+- (void)dispatchSyncOnMainQueue:(void (^ _Nonnull)(void))block;
+- (void)dispatchSyncOnMainQueue:(void (^ _Nonnull)(void))block timeout:(double)timeout;
+- (void)dispatchAfter:(NSTimeInterval)interval block:(void (^ _Nonnull)(void))block;
+- (void)dispatchOnce:(long * _Nonnull)predicate block:(void (^ _Nonnull)(void))block;
+@property (nonatomic, readonly) BOOL shouldDispatchCancel;
+@property (nonatomic, readonly) BOOL shouldCreateDispatchBlock;
+@end
+
 
 SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @interface SentryEnabledFeaturesBuilder : NSObject
@@ -1637,8 +1646,26 @@ SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @end
 
 
+/// Subclass of SentryEvent so we can add the Decodable implementation via a Swift extension. We need
+/// this due to our mixed use of public Swift and ObjC classes. We could avoid this class by
+/// converting SentryReplayEvent back to ObjC, but we rather accept this tradeoff as we want to
+/// convert all public classes to Swift in the future. This does not need to be public, but was previously
+/// defined in objc and was public. In the next major version of the SDK we should make it <code>internal</code> and <code>final</code>
+/// and remove the <code>@objc</code> annotation.
+/// @note: We can’t add the extension for Decodable directly on SentryEvent, because we get an error
+/// in SentryReplayEvent: ‘required’ initializer ‘init(from:)’ must be provided by subclass of
+/// ‘Event’ Once we add the initializer with required convenience public init(from decoder: any
+/// Decoder) throws { fatalError(“init(from:) has not been implemented”)
+/// }
+/// we get the error initializer ‘init(from:)’ is declared in extension of ‘Event’ and cannot be
+/// overridden. Therefore, we add the Decodable implementation not on the Event, but to a subclass of
+/// the event.
+SWIFT_CLASS_NAMED("SentryEventDecodable")
+@interface SentryEventDecodable : SentryEvent
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 @class NSData;
-@class SentryEvent;
 
 SWIFT_CLASS("_TtC6Sentry18SentryEventDecoder")
 @interface SentryEventDecoder : NSObject
@@ -1663,22 +1690,32 @@ SWIFT_CLASS("_TtC6Sentry25SentryExperimentalOptions")
 /// experiment:
 /// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future release.
 @property (nonatomic) BOOL enableFileManagerSwizzling;
+/// A more reliable way to report unhandled C++ exceptions.
+/// This approach hooks into all instances of the <code>__cxa_throw</code> function, which provides a more comprehensive and consistent exception handling across an app’s runtime, regardless of the number of C++ modules or how they’re linked. It helps in obtaining accurate stack traces.
+/// note:
+/// The mechanism of hooking into <code>__cxa_throw</code> could cause issues with symbolication on iOS due to caching of symbol references.
+/// experiment:
+/// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future major release.
+@property (nonatomic) BOOL enableUnhandledCPPExceptionsV2;
 - (void)validateOptions:(NSDictionary<NSString *, id> * _Nullable)options;
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-enum SentryFeedbackSource : NSInteger;
+@class NSMutableSet;
+
+SWIFT_CLASS("_TtC6Sentry19SentryExtraPackages")
+@interface SentryExtraPackages : NSObject
++ (void)addPackageName:(NSString * _Nullable)name version:(NSString * _Nullable)version;
++ (NSMutableSet * _Nonnull)getPackages SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 @class SentryId;
+enum SentryFeedbackSource : NSInteger;
 
 SWIFT_CLASS("_TtC6Sentry14SentryFeedback")
 @interface SentryFeedback : NSObject
-@property (nonatomic, copy) NSString * _Nullable name;
-@property (nonatomic, copy) NSString * _Nullable email;
-@property (nonatomic, copy) NSString * _Nonnull message;
-@property (nonatomic) enum SentryFeedbackSource source;
 @property (nonatomic, readonly, strong) SentryId * _Nonnull eventId;
-/// The event id that this feedback is associated with, like a crash report.
-@property (nonatomic, strong) SentryId * _Nullable associatedEventId;
 /// \param associatedEventId The ID for an event you’d like associated with the feedback. 
 ///
 /// \param attachments Data objects for any attachments. Currently the web UI only supports showing one attached image, like for a screenshot. 
@@ -1702,9 +1739,6 @@ typedef SWIFT_ENUM(NSInteger, SentryFeedbackSource, open) {
 
 @interface SentryFeedback (SWIFT_EXTENSION(Sentry))
 /// note:
-/// This dictionary is to pass to the block <code>SentryUserFeedbackConfiguration.onSubmitSuccess</code>, describing the contents submitted. This is different from the serialized form of the feedback for envelope transmission, because there are some internal details in that serialization that are irrelevant to the consumer and are not available at the time <code>onSubmitSuccess</code> is called.
-- (NSDictionary<NSString *, id> * _Nonnull)dataDictionary SWIFT_WARN_UNUSED_RESULT;
-/// note:
 /// Currently there is only a single attachment possible, for the screenshot, of which there can be only one.
 - (NSArray<SentryAttachment *> * _Nonnull)attachmentsForEnvelope SWIFT_WARN_UNUSED_RESULT;
 @end
@@ -1719,6 +1753,17 @@ SWIFT_CLASS("_TtC6Sentry18SentryFileContents")
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
+
+@class NSURL;
+
+SWIFT_PROTOCOL("_TtP6Sentry25SentryFileManagerProtocol_")
+@protocol SentryFileManagerProtocol
+- (void)moveState:(NSString * _Nonnull)stateFilePath toPreviousState:(NSString * _Nonnull)previousStateFilePath;
+- (NSData * _Nullable)readDataFromPath:(NSString * _Nonnull)path error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
+- (BOOL)writeData:(NSData * _Nonnull)data toPath:(NSString * _Nonnull)path;
+- (void)removeFileAtPath:(NSString * _Nonnull)path;
+- (NSURL * _Nonnull)getSentryPathAsURL SWIFT_WARN_UNUSED_RESULT;
+@end
 
 
 SWIFT_CLASS("_TtC6Sentry23SentryFramesDelayResult")
@@ -1773,41 +1818,12 @@ SWIFT_CLASS("_TtC6Sentry17SentryLevelHelper")
 @end
 
 
-
-/// A note on the thread safety:
-/// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
-/// Still, you can use log from multiple threads. The problem is that when you call configure while
-/// calling log from multiple threads, you experience a race condition. It can take a bit until all
-/// threads know the new config. As the SDK should only call configure once when starting, we do accept
-/// this race condition. Adding locks for evaluating the log level for every log invocation isn’t
-/// acceptable, as this adds a significant overhead for every log call. Therefore, we exclude SentryLog
-/// from the ThreadSanitizer as it produces false positives. The tests call configure multiple times,
-/// and the thread sanitizer would surface these race conditions. We accept these race conditions for
-/// the log messages in the tests over adding locking for all log messages.
-SWIFT_CLASS("_TtC6Sentry9SentryLog")
-@interface SentryLog : NSObject
-+ (void)logWithMessage:(NSString * _Nonnull)message andLevel:(enum SentryLevel)level;
-/// @return @c YES if the current logging configuration will log statements at the current level,
-/// @c NO if not.
-+ (BOOL)willLogAtLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
-- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
-@end
-
-
-
-SWIFT_CLASS("_TtC6Sentry21SentryLogSwiftSupport")
-@interface SentryLogSwiftSupport : NSObject
-+ (void)configure:(BOOL)isDebug diagnosticLevel:(enum SentryLevel)diagnosticLevel;
-- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
-@end
-
 @class SentryMXFrame;
 
 SWIFT_CLASS("_TtC6Sentry17SentryMXCallStack")
 @interface SentryMXCallStack : NSObject
 @property (nonatomic, copy) NSArray<SentryMXFrame *> * _Nonnull callStackRootFrames;
 @property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull flattenedRootFrames;
-- (nonnull instancetype)initWithThreadAttributed:(BOOL)threadAttributed rootFrames:(NSArray<SentryMXFrame *> * _Nonnull)rootFrames OBJC_DESIGNATED_INITIALIZER;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -1818,8 +1834,6 @@ SWIFT_CLASS("_TtC6Sentry21SentryMXCallStackTree")
 @interface SentryMXCallStackTree : NSObject
 @property (nonatomic, readonly, copy) NSArray<SentryMXCallStack *> * _Nonnull callStacks;
 @property (nonatomic, readonly) BOOL callStackPerThread;
-- (nonnull instancetype)initWithCallStacks:(NSArray<SentryMXCallStack *> * _Nonnull)callStacks callStackPerThread:(BOOL)callStackPerThread OBJC_DESIGNATED_INITIALIZER;
-+ (SentryMXCallStackTree * _Nullable)fromData:(NSData * _Nonnull)data error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -1832,8 +1846,6 @@ SWIFT_CLASS("_TtC6Sentry13SentryMXFrame")
 @property (nonatomic, copy) NSString * _Nullable binaryName;
 @property (nonatomic) uint64_t address;
 @property (nonatomic, copy) NSArray<SentryMXFrame *> * _Nullable subFrames;
-@property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull frames;
-@property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull framesIncludingSelf;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -1843,7 +1855,6 @@ SWIFT_CLASS("_TtC6Sentry13SentryMXFrame")
 
 SWIFT_CLASS("_TtC6Sentry15SentryMXManager") SWIFT_AVAILABILITY(watchos,unavailable) SWIFT_AVAILABILITY(tvos,unavailable) SWIFT_AVAILABILITY(maccatalyst,introduced=15.0) SWIFT_AVAILABILITY(macos,introduced=12.0) SWIFT_AVAILABILITY(ios,introduced=15.0)
 @interface SentryMXManager : NSObject <MXMetricManagerSubscriber>
-@property (nonatomic, readonly) BOOL disableCrashDiagnostics;
 - (nonnull instancetype)initWithDisableCrashDiagnostics:(BOOL)disableCrashDiagnostics OBJC_DESIGNATED_INITIALIZER;
 @property (nonatomic, weak) id <SentryMXManagerDelegate> _Nullable delegate;
 - (void)receiveReports;
@@ -1967,58 +1978,36 @@ typedef SWIFT_ENUM(NSInteger, SentryProfileLifecycle, open) {
 };
 
 
+SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
+@protocol SentryRRWebEvent <SentrySerializable>
+@end
+
+
+SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
+@interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
 SWIFT_CLASS("_TtC6Sentry22SentryRRWebCustomEvent")
 @interface SentryRRWebCustomEvent : SentryRRWebEvent
-@property (nonatomic, readonly, copy) NSString * _Nonnull tag;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
 @end
 
 
 SWIFT_CLASS("_TtC6Sentry26SentryRRWebBreadcrumbEvent")
 @interface SentryRRWebBreadcrumbEvent : SentryRRWebCustomEvent
 - (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp category:(NSString * _Nonnull)category message:(NSString * _Nullable)message level:(enum SentryLevel)level data:(NSDictionary<NSString *, id> * _Nullable)data OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
 @end
 
 
 
-
-typedef SWIFT_ENUM(NSInteger, SentryRRWebEventType, closed) {
-  SentryRRWebEventTypeNone = 0,
-  SentryRRWebEventTypeTouch = 3,
-  SentryRRWebEventTypeMeta = 4,
-  SentryRRWebEventTypeCustom = 5,
-};
-
-
-SWIFT_CLASS("_TtC6Sentry20SentryRRWebMetaEvent")
-@interface SentryRRWebMetaEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp height:(NSInteger)height width:(NSInteger)width OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
-@end
-
-@class SentryReplayOptions;
-
-SWIFT_CLASS("_TtC6Sentry23SentryRRWebOptionsEvent")
-@interface SentryRRWebOptionsEvent : SentryRRWebCustomEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp customOptions:(NSDictionary<NSString *, id> * _Nonnull)customOptions OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp options:(SentryReplayOptions * _Nonnull)options OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
-@end
 
 
 SWIFT_CLASS("_TtC6Sentry20SentryRRWebSpanEvent")
 @interface SentryRRWebSpanEvent : SentryRRWebCustomEvent
 - (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp endTimestamp:(NSDate * _Nonnull)endTimestamp operation:(NSString * _Nonnull)operation description:(NSString * _Nonnull)description data:(NSDictionary<NSString *, id> * _Nonnull)data OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry21SentryRRWebVideoEvent")
-@interface SentryRRWebVideoEvent : SentryRRWebCustomEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp segmentId:(NSInteger)segmentId size:(NSInteger)size duration:(NSTimeInterval)duration encoding:(NSString * _Nonnull)encoding container:(NSString * _Nonnull)container height:(NSInteger)height width:(NSInteger)width frameCount:(NSInteger)frameCount frameRateType:(NSString * _Nonnull)frameRateType frameRate:(NSInteger)frameRate left:(NSInteger)left top:(NSInteger)top OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
 @end
 
 
@@ -2061,7 +2050,8 @@ SWIFT_CLASS("_TtC6Sentry17SentryReplayEvent")
 /// that appear during the duration of the replay segment.
 @property (nonatomic, copy) NSArray<NSString *> * _Nullable urls;
 - (nonnull instancetype)initWithEventId:(SentryId * _Nonnull)eventId replayStartTimestamp:(NSDate * _Nonnull)replayStartTimestamp replayType:(enum SentryReplayType)replayType segmentId:(NSInteger)segmentId OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)init;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 - (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 @end
 
@@ -2179,10 +2169,6 @@ SWIFT_CLASS("_TtC6Sentry19SentryReplayOptions")
 /// note:
 /// See  <code>SentryReplayOptions.DefaultValues.maximumDuration</code> for the default value.
 @property (nonatomic) NSTimeInterval maximumDuration;
-/// Used by hybrid SDKs to be able to configure SDK info for Session Replay
-/// note:
-/// See <code>SentryReplayOptions.DefaultValues.sdkInfo</code> for the default value.
-@property (nonatomic, copy) NSDictionary<NSString *, id> * _Nullable sdkInfo;
 /// Initialize session replay options disabled
 /// note:
 /// This initializer is added for Objective-C compatibility, as constructors with default values
@@ -2231,18 +2217,7 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayQuality, open) {
 
 SWIFT_CLASS("_TtC6Sentry21SentryReplayRecording")
 @interface SentryReplayRecording : NSObject
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayEncoding;)
-+ (NSString * _Nonnull)SentryReplayEncoding SWIFT_WARN_UNUSED_RESULT;
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayContainer;)
-+ (NSString * _Nonnull)SentryReplayContainer SWIFT_WARN_UNUSED_RESULT;
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayFrameRateType;)
-+ (NSString * _Nonnull)SentryReplayFrameRateType SWIFT_WARN_UNUSED_RESULT;
-@property (nonatomic, readonly) NSInteger segmentId;
-@property (nonatomic, readonly, copy) NSArray<id <SentryRRWebEvent>> * _Nonnull events;
-@property (nonatomic, readonly) NSInteger height;
-@property (nonatomic, readonly) NSInteger width;
 - (nonnull instancetype)initWithSegmentId:(NSInteger)segmentId video:(SentryVideoInfo * _Nonnull)video extraEvents:(NSArray<id <SentryRRWebEvent>> * _Nonnull)extraEvents;
-- (nonnull instancetype)initWithSegmentId:(NSInteger)segmentId size:(NSInteger)size start:(NSDate * _Nonnull)start duration:(NSTimeInterval)duration frameCount:(NSInteger)frameCount frameRate:(NSInteger)frameRate height:(NSInteger)height width:(NSInteger)width extraEvents:(NSArray<id <SentryRRWebEvent>> * _Nullable)extraEvents OBJC_DESIGNATED_INITIALIZER;
 - (NSDictionary<NSString *, id> * _Nonnull)headerForReplayRecording SWIFT_WARN_UNUSED_RESULT;
 - (NSArray<NSDictionary<NSString *, id> *> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
@@ -2256,6 +2231,34 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayType, open) {
 
 
 
+/// A note on the thread safety:
+/// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
+/// Still, you can use log from multiple threads. The problem is that when you call configure while
+/// calling log from multiple threads, you experience a race condition. It can take a bit until all
+/// threads know the new config. As the SDK should only call configure once when starting, we do accept
+/// this race condition. Adding locks for evaluating the log level for every log invocation isn’t
+/// acceptable, as this adds a significant overhead for every log call. Therefore, we exclude SentryLog
+/// from the ThreadSanitizer as it produces false positives. The tests call configure multiple times,
+/// and the thread sanitizer would surface these race conditions. We accept these race conditions for
+/// the log messages in the tests over adding locking for all log messages.
+SWIFT_CLASS("_TtC6Sentry12SentrySDKLog")
+@interface SentrySDKLog : NSObject
++ (void)logWithMessage:(NSString * _Nonnull)message andLevel:(enum SentryLevel)level;
+/// @return @c YES if the current logging configuration will log statements at the current level,
+/// @c NO if not.
++ (BOOL)willLogAtLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
+
+SWIFT_CLASS("_TtC6Sentry19SentrySDKLogSupport")
+@interface SentrySDKLogSupport : NSObject
++ (void)configure:(BOOL)isDebug diagnosticLevel:(enum SentryLevel)diagnosticLevel;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
 SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 @interface SentrySRDefaultBreadcrumbConverter : NSObject <SentryReplayBreadcrumbConverter>
 /// This function will convert the SDK breadcrumbs to session replay breadcrumbs in a format that the front-end understands.
@@ -2265,35 +2268,35 @@ SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryFileManager;
-@class NSURL;
+@class SentryUser;
 
-SWIFT_CLASS("_TtC6Sentry33SentryScopeContextPersistentStore")
-@interface SentryScopeContextPersistentStore : NSObject
-- (nonnull instancetype)initWithFileManager:(SentryFileManager * _Nonnull)fileManager OBJC_DESIGNATED_INITIALIZER;
-- (void)moveCurrentFileToPreviousFile;
+SWIFT_CLASS("_TtC6Sentry26SentryScopePersistentStore")
+@interface SentryScopePersistentStore : NSObject
+- (nullable instancetype)initWithFileManager:(id <SentryFileManagerProtocol> _Nullable)fileManager OBJC_DESIGNATED_INITIALIZER;
+- (void)moveAllCurrentStateToPreviousState;
 - (NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)readPreviousContextFromDisk SWIFT_WARN_UNUSED_RESULT;
-- (void)writeContextToDiskWithContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nonnull)context;
-- (void)deleteContextOnDisk;
-- (void)deletePreviousContextOnDisk;
-/// Path to a state file holding the latest context observed from the scope.
-/// This path is used to keep a persistent copy of the scope context on disk, to be available after
-/// restart of the app.
-@property (nonatomic, readonly, copy) NSURL * _Nonnull contextFileURL;
-/// Path to the previous state file holding the latest context observed from the scope.
-/// This file is overwritten at SDK start and kept as a copy of the last context file until the next
-/// SDK start.
-@property (nonatomic, readonly, copy) NSURL * _Nonnull previousContextFileURL;
+- (SentryUser * _Nullable)readPreviousUserFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSString * _Nullable)readPreviousDistFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSString * _Nullable)readPreviousEnvironmentFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSDictionary<NSString *, NSString *> * _Nullable)readPreviousTagsFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSDictionary<NSString *, id> * _Nullable)readPreviousExtrasFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSArray<NSString *> * _Nullable)readPreviousFingerprintFromDisk SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
-@class SentrySession;
 
-SWIFT_PROTOCOL("_TtP6Sentry21SentrySessionListener_")
-@protocol SentrySessionListener <NSObject>
-- (void)sentrySessionEnded:(SentrySession * _Nonnull)session;
-- (void)sentrySessionStarted:(SentrySession * _Nonnull)session;
+
+
+
+
+
+
+
+SWIFT_CLASS("_TtC6Sentry16SentrySdkPackage")
+@interface SentrySdkPackage : NSObject
++ (NSDictionary<NSString *, NSString *> * _Nullable)global SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
 
@@ -2325,31 +2328,38 @@ SWIFT_PROTOCOL("_TtP6Sentry32SentryUIViewControllerDescriptor_")
 @property (nonatomic, readonly, copy) NSString * _Nonnull sentryName;
 @end
 
+@class SentryDsn;
+@class NSURLRequest;
+
+SWIFT_CLASS("_TtC6Sentry23SentryURLRequestFactory")
+@interface SentryURLRequestFactory : NSObject
++ (NSURLRequest * _Nullable)envelopeRequestWith:(SentryDsn * _Nonnull)dsn data:(NSData * _Nonnull)data error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
++ (NSURLRequest * _Nullable)envelopeRequestWith:(NSURL * _Nonnull)url data:(NSData * _Nonnull)data authHeader:(NSString * _Nullable)authHeader error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 
 SWIFT_CLASS("_TtC6Sentry15SentryVideoInfo")
 @interface SentryVideoInfo : NSObject
 @property (nonatomic, readonly, copy) NSURL * _Nonnull path;
-@property (nonatomic, readonly) NSInteger height;
-@property (nonatomic, readonly) NSInteger width;
-@property (nonatomic, readonly) NSTimeInterval duration;
-@property (nonatomic, readonly) NSInteger frameCount;
-@property (nonatomic, readonly) NSInteger frameRate;
 @property (nonatomic, readonly, copy) NSDate * _Nonnull start;
 @property (nonatomic, readonly, copy) NSDate * _Nonnull end;
-@property (nonatomic, readonly) NSInteger fileSize;
-@property (nonatomic, readonly, copy) NSArray<NSString *> * _Nonnull screens;
-- (nonnull instancetype)initWithPath:(NSURL * _Nonnull)path height:(NSInteger)height width:(NSInteger)width duration:(NSTimeInterval)duration frameCount:(NSInteger)frameCount frameRate:(NSInteger)frameRate start:(NSDate * _Nonnull)start end:(NSDate * _Nonnull)end fileSize:(NSInteger)fileSize screens:(NSArray<NSString *> * _Nonnull)screens OBJC_DESIGNATED_INITIALIZER;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
-@class SentryDispatchQueueWrapper;
 
-SWIFT_CLASS("_TtC6Sentry41SentryWatchdogTerminationContextProcessor")
-@interface SentryWatchdogTerminationContextProcessor : NSObject
-- (nonnull instancetype)initWithDispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper scopeContextStore:(SentryScopeContextPersistentStore * _Nonnull)scopeContextStore OBJC_DESIGNATED_INITIALIZER;
-- (void)setContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)context;
+SWIFT_CLASS("_TtC6Sentry44SentryWatchdogTerminationAttributesProcessor")
+@interface SentryWatchdogTerminationAttributesProcessor : NSObject
+- (nonnull instancetype)initWithDispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper scopePersistentStore:(SentryScopePersistentStore * _Nonnull)scopePersistentStore OBJC_DESIGNATED_INITIALIZER;
 - (void)clear;
+- (void)setContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)context;
+- (void)setUser:(SentryUser * _Nullable)user;
+- (void)setDist:(NSString * _Nullable)dist;
+- (void)setEnvironment:(NSString * _Nullable)environment;
+- (void)setTags:(NSDictionary<NSString *, NSString *> * _Nullable)tags;
+- (void)setExtras:(NSDictionary<NSString *, id> * _Nullable)extras;
+- (void)setFingerprint:(NSArray<NSString *> * _Nullable)fingerprint;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -2374,8 +2384,6 @@ SWIFT_CLASS("_TtC6Sentry20URLSessionTaskHelper")
 
 SWIFT_CLASS("_TtC6Sentry12UrlSanitized")
 @interface UrlSanitized : NSObject
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SENSITIVE_DATA_SUBSTITUTE;)
-+ (NSString * _Nonnull)SENSITIVE_DATA_SUBSTITUTE SWIFT_WARN_UNUSED_RESULT;
 @property (nonatomic, readonly, copy) NSString * _Nullable query;
 @property (nonatomic, readonly, copy) NSArray<NSURLQueryItem *> * _Nullable queryItems;
 @property (nonatomic, readonly, copy) NSString * _Nullable fragment;
@@ -2385,6 +2393,28 @@ SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _No
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
+
+
+/// Adds additional information about what happened to an event.
+/// @deprecated Use <code>SentryFeedback</code>.
+SWIFT_CLASS_NAMED("UserFeedback") SWIFT_DEPRECATED_MSG("Use SentryFeedback.")
+@interface SentryUserFeedback : NSObject <SentrySerializable>
+/// The eventId of the event to which the user feedback is associated.
+@property (nonatomic, readonly, strong) SentryId * _Nonnull eventId;
+/// The name of the user.
+@property (nonatomic, copy) NSString * _Nonnull name;
+/// The email of the user.
+@property (nonatomic, copy) NSString * _Nonnull email;
+/// Comments of the user about what happened.
+@property (nonatomic, copy) NSString * _Nonnull comments;
+/// Initializes SentryUserFeedback and sets the required eventId.
+/// \param eventId The eventId of the event to which the user feedback is associated.
+///
+- (nonnull instancetype)initWithEventId:(SentryId * _Nonnull)eventId OBJC_DESIGNATED_INITIALIZER;
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
 
 #endif
 #if __has_attribute(external_source_symbol)
@@ -2674,6 +2704,7 @@ typedef unsigned int swift_uint4  __attribute__((__ext_vector_type__(4)));
 #pragma clang diagnostic ignored "-Watimport-in-framework-header"
 #endif
 @import CoreFoundation;
+@import Dispatch;
 @import Foundation;
 @import MetricKit;
 @import ObjectiveC;
@@ -2717,35 +2748,12 @@ SWIFT_CLASS("_TtC6Sentry19HTTPHeaderSanitizer")
 
 
 
+@class SentryExperimentalOptions;
 
-SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
-@protocol SentryRRWebEvent <SentrySerializable>
-@end
-
-enum SentryRRWebEventType : NSInteger;
-@class NSDate;
-
-SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
-@interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
-@property (nonatomic, readonly) enum SentryRRWebEventType type;
-@property (nonatomic, readonly, copy) NSDate * _Nonnull timestamp;
-@property (nonatomic, readonly, copy) NSDictionary<NSString *, id> * _Nullable data;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data OBJC_DESIGNATED_INITIALIZER;
-- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
-- (nonnull instancetype)init SWIFT_UNAVAILABLE;
-+ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry14RRWebMoveEvent")
-@interface RRWebMoveEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry15RRWebTouchEvent")
-@interface RRWebTouchEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
+@interface SentryOptions (SWIFT_EXTENSION(Sentry))
+/// This aggregates options for experimental features.
+/// Be aware that the options available for experimental can change at any time.
+@property (nonatomic, readonly, strong) SentryExperimentalOptions * _Nonnull experimental;
 @end
 
 
@@ -2802,6 +2810,7 @@ SWIFT_CLASS("_TtC6Sentry26SentryBaggageSerialization")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+@class NSDate;
 
 /// We need a protocol to expose SentryCurrentDateProvider to tests.
 /// Mocking the previous private class from <code>SentryTestUtils</code> stopped working in Xcode 16.
@@ -2826,7 +2835,22 @@ SWIFT_CLASS("_TtC6Sentry32SentryDefaultCurrentDateProvider")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryOptions;
+
+SWIFT_CLASS("_TtC6Sentry26SentryDispatchQueueWrapper")
+@interface SentryDispatchQueueWrapper : NSObject
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithName:(char const * _Nonnull)name attributes:(dispatch_queue_attr_t _Nullable)attributes OBJC_DESIGNATED_INITIALIZER;
+@property (nonatomic, readonly, strong) dispatch_queue_t _Nonnull queue;
+- (void)dispatchAsyncWithBlock:(void (^ _Nonnull)(void))block;
+- (void)dispatchAsyncOnMainQueue:(void (^ _Nonnull)(void))block;
+- (void)dispatchSyncOnMainQueue:(void (^ _Nonnull)(void))block;
+- (void)dispatchSyncOnMainQueue:(void (^ _Nonnull)(void))block timeout:(double)timeout;
+- (void)dispatchAfter:(NSTimeInterval)interval block:(void (^ _Nonnull)(void))block;
+- (void)dispatchOnce:(long * _Nonnull)predicate block:(void (^ _Nonnull)(void))block;
+@property (nonatomic, readonly) BOOL shouldDispatchCancel;
+@property (nonatomic, readonly) BOOL shouldCreateDispatchBlock;
+@end
+
 
 SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @interface SentryEnabledFeaturesBuilder : NSObject
@@ -2835,8 +2859,26 @@ SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @end
 
 
+/// Subclass of SentryEvent so we can add the Decodable implementation via a Swift extension. We need
+/// this due to our mixed use of public Swift and ObjC classes. We could avoid this class by
+/// converting SentryReplayEvent back to ObjC, but we rather accept this tradeoff as we want to
+/// convert all public classes to Swift in the future. This does not need to be public, but was previously
+/// defined in objc and was public. In the next major version of the SDK we should make it <code>internal</code> and <code>final</code>
+/// and remove the <code>@objc</code> annotation.
+/// @note: We can’t add the extension for Decodable directly on SentryEvent, because we get an error
+/// in SentryReplayEvent: ‘required’ initializer ‘init(from:)’ must be provided by subclass of
+/// ‘Event’ Once we add the initializer with required convenience public init(from decoder: any
+/// Decoder) throws { fatalError(“init(from:) has not been implemented”)
+/// }
+/// we get the error initializer ‘init(from:)’ is declared in extension of ‘Event’ and cannot be
+/// overridden. Therefore, we add the Decodable implementation not on the Event, but to a subclass of
+/// the event.
+SWIFT_CLASS_NAMED("SentryEventDecodable")
+@interface SentryEventDecodable : SentryEvent
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 @class NSData;
-@class SentryEvent;
 
 SWIFT_CLASS("_TtC6Sentry18SentryEventDecoder")
 @interface SentryEventDecoder : NSObject
@@ -2861,22 +2903,32 @@ SWIFT_CLASS("_TtC6Sentry25SentryExperimentalOptions")
 /// experiment:
 /// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future release.
 @property (nonatomic) BOOL enableFileManagerSwizzling;
+/// A more reliable way to report unhandled C++ exceptions.
+/// This approach hooks into all instances of the <code>__cxa_throw</code> function, which provides a more comprehensive and consistent exception handling across an app’s runtime, regardless of the number of C++ modules or how they’re linked. It helps in obtaining accurate stack traces.
+/// note:
+/// The mechanism of hooking into <code>__cxa_throw</code> could cause issues with symbolication on iOS due to caching of symbol references.
+/// experiment:
+/// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future major release.
+@property (nonatomic) BOOL enableUnhandledCPPExceptionsV2;
 - (void)validateOptions:(NSDictionary<NSString *, id> * _Nullable)options;
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-enum SentryFeedbackSource : NSInteger;
+@class NSMutableSet;
+
+SWIFT_CLASS("_TtC6Sentry19SentryExtraPackages")
+@interface SentryExtraPackages : NSObject
++ (void)addPackageName:(NSString * _Nullable)name version:(NSString * _Nullable)version;
++ (NSMutableSet * _Nonnull)getPackages SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 @class SentryId;
+enum SentryFeedbackSource : NSInteger;
 
 SWIFT_CLASS("_TtC6Sentry14SentryFeedback")
 @interface SentryFeedback : NSObject
-@property (nonatomic, copy) NSString * _Nullable name;
-@property (nonatomic, copy) NSString * _Nullable email;
-@property (nonatomic, copy) NSString * _Nonnull message;
-@property (nonatomic) enum SentryFeedbackSource source;
 @property (nonatomic, readonly, strong) SentryId * _Nonnull eventId;
-/// The event id that this feedback is associated with, like a crash report.
-@property (nonatomic, strong) SentryId * _Nullable associatedEventId;
 /// \param associatedEventId The ID for an event you’d like associated with the feedback. 
 ///
 /// \param attachments Data objects for any attachments. Currently the web UI only supports showing one attached image, like for a screenshot. 
@@ -2900,9 +2952,6 @@ typedef SWIFT_ENUM(NSInteger, SentryFeedbackSource, open) {
 
 @interface SentryFeedback (SWIFT_EXTENSION(Sentry))
 /// note:
-/// This dictionary is to pass to the block <code>SentryUserFeedbackConfiguration.onSubmitSuccess</code>, describing the contents submitted. This is different from the serialized form of the feedback for envelope transmission, because there are some internal details in that serialization that are irrelevant to the consumer and are not available at the time <code>onSubmitSuccess</code> is called.
-- (NSDictionary<NSString *, id> * _Nonnull)dataDictionary SWIFT_WARN_UNUSED_RESULT;
-/// note:
 /// Currently there is only a single attachment possible, for the screenshot, of which there can be only one.
 - (NSArray<SentryAttachment *> * _Nonnull)attachmentsForEnvelope SWIFT_WARN_UNUSED_RESULT;
 @end
@@ -2917,6 +2966,17 @@ SWIFT_CLASS("_TtC6Sentry18SentryFileContents")
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
+
+@class NSURL;
+
+SWIFT_PROTOCOL("_TtP6Sentry25SentryFileManagerProtocol_")
+@protocol SentryFileManagerProtocol
+- (void)moveState:(NSString * _Nonnull)stateFilePath toPreviousState:(NSString * _Nonnull)previousStateFilePath;
+- (NSData * _Nullable)readDataFromPath:(NSString * _Nonnull)path error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
+- (BOOL)writeData:(NSData * _Nonnull)data toPath:(NSString * _Nonnull)path;
+- (void)removeFileAtPath:(NSString * _Nonnull)path;
+- (NSURL * _Nonnull)getSentryPathAsURL SWIFT_WARN_UNUSED_RESULT;
+@end
 
 
 SWIFT_CLASS("_TtC6Sentry23SentryFramesDelayResult")
@@ -2971,41 +3031,12 @@ SWIFT_CLASS("_TtC6Sentry17SentryLevelHelper")
 @end
 
 
-
-/// A note on the thread safety:
-/// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
-/// Still, you can use log from multiple threads. The problem is that when you call configure while
-/// calling log from multiple threads, you experience a race condition. It can take a bit until all
-/// threads know the new config. As the SDK should only call configure once when starting, we do accept
-/// this race condition. Adding locks for evaluating the log level for every log invocation isn’t
-/// acceptable, as this adds a significant overhead for every log call. Therefore, we exclude SentryLog
-/// from the ThreadSanitizer as it produces false positives. The tests call configure multiple times,
-/// and the thread sanitizer would surface these race conditions. We accept these race conditions for
-/// the log messages in the tests over adding locking for all log messages.
-SWIFT_CLASS("_TtC6Sentry9SentryLog")
-@interface SentryLog : NSObject
-+ (void)logWithMessage:(NSString * _Nonnull)message andLevel:(enum SentryLevel)level;
-/// @return @c YES if the current logging configuration will log statements at the current level,
-/// @c NO if not.
-+ (BOOL)willLogAtLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
-- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
-@end
-
-
-
-SWIFT_CLASS("_TtC6Sentry21SentryLogSwiftSupport")
-@interface SentryLogSwiftSupport : NSObject
-+ (void)configure:(BOOL)isDebug diagnosticLevel:(enum SentryLevel)diagnosticLevel;
-- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
-@end
-
 @class SentryMXFrame;
 
 SWIFT_CLASS("_TtC6Sentry17SentryMXCallStack")
 @interface SentryMXCallStack : NSObject
 @property (nonatomic, copy) NSArray<SentryMXFrame *> * _Nonnull callStackRootFrames;
 @property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull flattenedRootFrames;
-- (nonnull instancetype)initWithThreadAttributed:(BOOL)threadAttributed rootFrames:(NSArray<SentryMXFrame *> * _Nonnull)rootFrames OBJC_DESIGNATED_INITIALIZER;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -3016,8 +3047,6 @@ SWIFT_CLASS("_TtC6Sentry21SentryMXCallStackTree")
 @interface SentryMXCallStackTree : NSObject
 @property (nonatomic, readonly, copy) NSArray<SentryMXCallStack *> * _Nonnull callStacks;
 @property (nonatomic, readonly) BOOL callStackPerThread;
-- (nonnull instancetype)initWithCallStacks:(NSArray<SentryMXCallStack *> * _Nonnull)callStacks callStackPerThread:(BOOL)callStackPerThread OBJC_DESIGNATED_INITIALIZER;
-+ (SentryMXCallStackTree * _Nullable)fromData:(NSData * _Nonnull)data error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -3030,8 +3059,6 @@ SWIFT_CLASS("_TtC6Sentry13SentryMXFrame")
 @property (nonatomic, copy) NSString * _Nullable binaryName;
 @property (nonatomic) uint64_t address;
 @property (nonatomic, copy) NSArray<SentryMXFrame *> * _Nullable subFrames;
-@property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull frames;
-@property (nonatomic, readonly, copy) NSArray<SentryMXFrame *> * _Nonnull framesIncludingSelf;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -3041,7 +3068,6 @@ SWIFT_CLASS("_TtC6Sentry13SentryMXFrame")
 
 SWIFT_CLASS("_TtC6Sentry15SentryMXManager") SWIFT_AVAILABILITY(watchos,unavailable) SWIFT_AVAILABILITY(tvos,unavailable) SWIFT_AVAILABILITY(maccatalyst,introduced=15.0) SWIFT_AVAILABILITY(macos,introduced=12.0) SWIFT_AVAILABILITY(ios,introduced=15.0)
 @interface SentryMXManager : NSObject <MXMetricManagerSubscriber>
-@property (nonatomic, readonly) BOOL disableCrashDiagnostics;
 - (nonnull instancetype)initWithDisableCrashDiagnostics:(BOOL)disableCrashDiagnostics OBJC_DESIGNATED_INITIALIZER;
 @property (nonatomic, weak) id <SentryMXManagerDelegate> _Nullable delegate;
 - (void)receiveReports;
@@ -3165,58 +3191,36 @@ typedef SWIFT_ENUM(NSInteger, SentryProfileLifecycle, open) {
 };
 
 
+SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
+@protocol SentryRRWebEvent <SentrySerializable>
+@end
+
+
+SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
+@interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
 SWIFT_CLASS("_TtC6Sentry22SentryRRWebCustomEvent")
 @interface SentryRRWebCustomEvent : SentryRRWebEvent
-@property (nonatomic, readonly, copy) NSString * _Nonnull tag;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
 @end
 
 
 SWIFT_CLASS("_TtC6Sentry26SentryRRWebBreadcrumbEvent")
 @interface SentryRRWebBreadcrumbEvent : SentryRRWebCustomEvent
 - (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp category:(NSString * _Nonnull)category message:(NSString * _Nullable)message level:(enum SentryLevel)level data:(NSDictionary<NSString *, id> * _Nullable)data OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
 @end
 
 
 
-
-typedef SWIFT_ENUM(NSInteger, SentryRRWebEventType, closed) {
-  SentryRRWebEventTypeNone = 0,
-  SentryRRWebEventTypeTouch = 3,
-  SentryRRWebEventTypeMeta = 4,
-  SentryRRWebEventTypeCustom = 5,
-};
-
-
-SWIFT_CLASS("_TtC6Sentry20SentryRRWebMetaEvent")
-@interface SentryRRWebMetaEvent : SentryRRWebEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp height:(NSInteger)height width:(NSInteger)width OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithType:(enum SentryRRWebEventType)type timestamp:(NSDate * _Nonnull)timestamp data:(NSDictionary<NSString *, id> * _Nullable)data SWIFT_UNAVAILABLE;
-@end
-
-@class SentryReplayOptions;
-
-SWIFT_CLASS("_TtC6Sentry23SentryRRWebOptionsEvent")
-@interface SentryRRWebOptionsEvent : SentryRRWebCustomEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp customOptions:(NSDictionary<NSString *, id> * _Nonnull)customOptions OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp options:(SentryReplayOptions * _Nonnull)options OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
-@end
 
 
 SWIFT_CLASS("_TtC6Sentry20SentryRRWebSpanEvent")
 @interface SentryRRWebSpanEvent : SentryRRWebCustomEvent
 - (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp endTimestamp:(NSDate * _Nonnull)endTimestamp operation:(NSString * _Nonnull)operation description:(NSString * _Nonnull)description data:(NSDictionary<NSString *, id> * _Nonnull)data OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
-@end
-
-
-SWIFT_CLASS("_TtC6Sentry21SentryRRWebVideoEvent")
-@interface SentryRRWebVideoEvent : SentryRRWebCustomEvent
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp segmentId:(NSInteger)segmentId size:(NSInteger)size duration:(NSTimeInterval)duration encoding:(NSString * _Nonnull)encoding container:(NSString * _Nonnull)container height:(NSInteger)height width:(NSInteger)width frameCount:(NSInteger)frameCount frameRateType:(NSString * _Nonnull)frameRateType frameRate:(NSInteger)frameRate left:(NSInteger)left top:(NSInteger)top OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)initWithTimestamp:(NSDate * _Nonnull)timestamp tag:(NSString * _Nonnull)tag payload:(NSDictionary<NSString *, id> * _Nonnull)payload SWIFT_UNAVAILABLE;
 @end
 
 
@@ -3259,7 +3263,8 @@ SWIFT_CLASS("_TtC6Sentry17SentryReplayEvent")
 /// that appear during the duration of the replay segment.
 @property (nonatomic, copy) NSArray<NSString *> * _Nullable urls;
 - (nonnull instancetype)initWithEventId:(SentryId * _Nonnull)eventId replayStartTimestamp:(NSDate * _Nonnull)replayStartTimestamp replayType:(enum SentryReplayType)replayType segmentId:(NSInteger)segmentId OBJC_DESIGNATED_INITIALIZER;
-- (nonnull instancetype)init;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 - (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 @end
 
@@ -3377,10 +3382,6 @@ SWIFT_CLASS("_TtC6Sentry19SentryReplayOptions")
 /// note:
 /// See  <code>SentryReplayOptions.DefaultValues.maximumDuration</code> for the default value.
 @property (nonatomic) NSTimeInterval maximumDuration;
-/// Used by hybrid SDKs to be able to configure SDK info for Session Replay
-/// note:
-/// See <code>SentryReplayOptions.DefaultValues.sdkInfo</code> for the default value.
-@property (nonatomic, copy) NSDictionary<NSString *, id> * _Nullable sdkInfo;
 /// Initialize session replay options disabled
 /// note:
 /// This initializer is added for Objective-C compatibility, as constructors with default values
@@ -3429,18 +3430,7 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayQuality, open) {
 
 SWIFT_CLASS("_TtC6Sentry21SentryReplayRecording")
 @interface SentryReplayRecording : NSObject
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayEncoding;)
-+ (NSString * _Nonnull)SentryReplayEncoding SWIFT_WARN_UNUSED_RESULT;
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayContainer;)
-+ (NSString * _Nonnull)SentryReplayContainer SWIFT_WARN_UNUSED_RESULT;
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SentryReplayFrameRateType;)
-+ (NSString * _Nonnull)SentryReplayFrameRateType SWIFT_WARN_UNUSED_RESULT;
-@property (nonatomic, readonly) NSInteger segmentId;
-@property (nonatomic, readonly, copy) NSArray<id <SentryRRWebEvent>> * _Nonnull events;
-@property (nonatomic, readonly) NSInteger height;
-@property (nonatomic, readonly) NSInteger width;
 - (nonnull instancetype)initWithSegmentId:(NSInteger)segmentId video:(SentryVideoInfo * _Nonnull)video extraEvents:(NSArray<id <SentryRRWebEvent>> * _Nonnull)extraEvents;
-- (nonnull instancetype)initWithSegmentId:(NSInteger)segmentId size:(NSInteger)size start:(NSDate * _Nonnull)start duration:(NSTimeInterval)duration frameCount:(NSInteger)frameCount frameRate:(NSInteger)frameRate height:(NSInteger)height width:(NSInteger)width extraEvents:(NSArray<id <SentryRRWebEvent>> * _Nullable)extraEvents OBJC_DESIGNATED_INITIALIZER;
 - (NSDictionary<NSString *, id> * _Nonnull)headerForReplayRecording SWIFT_WARN_UNUSED_RESULT;
 - (NSArray<NSDictionary<NSString *, id> *> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
@@ -3454,6 +3444,34 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayType, open) {
 
 
 
+/// A note on the thread safety:
+/// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
+/// Still, you can use log from multiple threads. The problem is that when you call configure while
+/// calling log from multiple threads, you experience a race condition. It can take a bit until all
+/// threads know the new config. As the SDK should only call configure once when starting, we do accept
+/// this race condition. Adding locks for evaluating the log level for every log invocation isn’t
+/// acceptable, as this adds a significant overhead for every log call. Therefore, we exclude SentryLog
+/// from the ThreadSanitizer as it produces false positives. The tests call configure multiple times,
+/// and the thread sanitizer would surface these race conditions. We accept these race conditions for
+/// the log messages in the tests over adding locking for all log messages.
+SWIFT_CLASS("_TtC6Sentry12SentrySDKLog")
+@interface SentrySDKLog : NSObject
++ (void)logWithMessage:(NSString * _Nonnull)message andLevel:(enum SentryLevel)level;
+/// @return @c YES if the current logging configuration will log statements at the current level,
+/// @c NO if not.
++ (BOOL)willLogAtLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
+
+SWIFT_CLASS("_TtC6Sentry19SentrySDKLogSupport")
+@interface SentrySDKLogSupport : NSObject
++ (void)configure:(BOOL)isDebug diagnosticLevel:(enum SentryLevel)diagnosticLevel;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
 SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 @interface SentrySRDefaultBreadcrumbConverter : NSObject <SentryReplayBreadcrumbConverter>
 /// This function will convert the SDK breadcrumbs to session replay breadcrumbs in a format that the front-end understands.
@@ -3463,35 +3481,35 @@ SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryFileManager;
-@class NSURL;
+@class SentryUser;
 
-SWIFT_CLASS("_TtC6Sentry33SentryScopeContextPersistentStore")
-@interface SentryScopeContextPersistentStore : NSObject
-- (nonnull instancetype)initWithFileManager:(SentryFileManager * _Nonnull)fileManager OBJC_DESIGNATED_INITIALIZER;
-- (void)moveCurrentFileToPreviousFile;
+SWIFT_CLASS("_TtC6Sentry26SentryScopePersistentStore")
+@interface SentryScopePersistentStore : NSObject
+- (nullable instancetype)initWithFileManager:(id <SentryFileManagerProtocol> _Nullable)fileManager OBJC_DESIGNATED_INITIALIZER;
+- (void)moveAllCurrentStateToPreviousState;
 - (NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)readPreviousContextFromDisk SWIFT_WARN_UNUSED_RESULT;
-- (void)writeContextToDiskWithContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nonnull)context;
-- (void)deleteContextOnDisk;
-- (void)deletePreviousContextOnDisk;
-/// Path to a state file holding the latest context observed from the scope.
-/// This path is used to keep a persistent copy of the scope context on disk, to be available after
-/// restart of the app.
-@property (nonatomic, readonly, copy) NSURL * _Nonnull contextFileURL;
-/// Path to the previous state file holding the latest context observed from the scope.
-/// This file is overwritten at SDK start and kept as a copy of the last context file until the next
-/// SDK start.
-@property (nonatomic, readonly, copy) NSURL * _Nonnull previousContextFileURL;
+- (SentryUser * _Nullable)readPreviousUserFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSString * _Nullable)readPreviousDistFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSString * _Nullable)readPreviousEnvironmentFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSDictionary<NSString *, NSString *> * _Nullable)readPreviousTagsFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSDictionary<NSString *, id> * _Nullable)readPreviousExtrasFromDisk SWIFT_WARN_UNUSED_RESULT;
+- (NSArray<NSString *> * _Nullable)readPreviousFingerprintFromDisk SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
-@class SentrySession;
 
-SWIFT_PROTOCOL("_TtP6Sentry21SentrySessionListener_")
-@protocol SentrySessionListener <NSObject>
-- (void)sentrySessionEnded:(SentrySession * _Nonnull)session;
-- (void)sentrySessionStarted:(SentrySession * _Nonnull)session;
+
+
+
+
+
+
+
+SWIFT_CLASS("_TtC6Sentry16SentrySdkPackage")
+@interface SentrySdkPackage : NSObject
++ (NSDictionary<NSString *, NSString *> * _Nullable)global SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
 
@@ -3523,31 +3541,38 @@ SWIFT_PROTOCOL("_TtP6Sentry32SentryUIViewControllerDescriptor_")
 @property (nonatomic, readonly, copy) NSString * _Nonnull sentryName;
 @end
 
+@class SentryDsn;
+@class NSURLRequest;
+
+SWIFT_CLASS("_TtC6Sentry23SentryURLRequestFactory")
+@interface SentryURLRequestFactory : NSObject
++ (NSURLRequest * _Nullable)envelopeRequestWith:(SentryDsn * _Nonnull)dsn data:(NSData * _Nonnull)data error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
++ (NSURLRequest * _Nullable)envelopeRequestWith:(NSURL * _Nonnull)url data:(NSData * _Nonnull)data authHeader:(NSString * _Nullable)authHeader error:(NSError * _Nullable * _Nullable)error SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 
 SWIFT_CLASS("_TtC6Sentry15SentryVideoInfo")
 @interface SentryVideoInfo : NSObject
 @property (nonatomic, readonly, copy) NSURL * _Nonnull path;
-@property (nonatomic, readonly) NSInteger height;
-@property (nonatomic, readonly) NSInteger width;
-@property (nonatomic, readonly) NSTimeInterval duration;
-@property (nonatomic, readonly) NSInteger frameCount;
-@property (nonatomic, readonly) NSInteger frameRate;
 @property (nonatomic, readonly, copy) NSDate * _Nonnull start;
 @property (nonatomic, readonly, copy) NSDate * _Nonnull end;
-@property (nonatomic, readonly) NSInteger fileSize;
-@property (nonatomic, readonly, copy) NSArray<NSString *> * _Nonnull screens;
-- (nonnull instancetype)initWithPath:(NSURL * _Nonnull)path height:(NSInteger)height width:(NSInteger)width duration:(NSTimeInterval)duration frameCount:(NSInteger)frameCount frameRate:(NSInteger)frameRate start:(NSDate * _Nonnull)start end:(NSDate * _Nonnull)end fileSize:(NSInteger)fileSize screens:(NSArray<NSString *> * _Nonnull)screens OBJC_DESIGNATED_INITIALIZER;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
-@class SentryDispatchQueueWrapper;
 
-SWIFT_CLASS("_TtC6Sentry41SentryWatchdogTerminationContextProcessor")
-@interface SentryWatchdogTerminationContextProcessor : NSObject
-- (nonnull instancetype)initWithDispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper scopeContextStore:(SentryScopeContextPersistentStore * _Nonnull)scopeContextStore OBJC_DESIGNATED_INITIALIZER;
-- (void)setContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)context;
+SWIFT_CLASS("_TtC6Sentry44SentryWatchdogTerminationAttributesProcessor")
+@interface SentryWatchdogTerminationAttributesProcessor : NSObject
+- (nonnull instancetype)initWithDispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper scopePersistentStore:(SentryScopePersistentStore * _Nonnull)scopePersistentStore OBJC_DESIGNATED_INITIALIZER;
 - (void)clear;
+- (void)setContext:(NSDictionary<NSString *, NSDictionary<NSString *, id> *> * _Nullable)context;
+- (void)setUser:(SentryUser * _Nullable)user;
+- (void)setDist:(NSString * _Nullable)dist;
+- (void)setEnvironment:(NSString * _Nullable)environment;
+- (void)setTags:(NSDictionary<NSString *, NSString *> * _Nullable)tags;
+- (void)setExtras:(NSDictionary<NSString *, id> * _Nullable)extras;
+- (void)setFingerprint:(NSArray<NSString *> * _Nullable)fingerprint;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
@@ -3572,8 +3597,6 @@ SWIFT_CLASS("_TtC6Sentry20URLSessionTaskHelper")
 
 SWIFT_CLASS("_TtC6Sentry12UrlSanitized")
 @interface UrlSanitized : NSObject
-SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _Nonnull SENSITIVE_DATA_SUBSTITUTE;)
-+ (NSString * _Nonnull)SENSITIVE_DATA_SUBSTITUTE SWIFT_WARN_UNUSED_RESULT;
 @property (nonatomic, readonly, copy) NSString * _Nullable query;
 @property (nonatomic, readonly, copy) NSArray<NSURLQueryItem *> * _Nullable queryItems;
 @property (nonatomic, readonly, copy) NSString * _Nullable fragment;
@@ -3583,6 +3606,28 @@ SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, copy) NSString * _No
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
 @end
 
+
+
+/// Adds additional information about what happened to an event.
+/// @deprecated Use <code>SentryFeedback</code>.
+SWIFT_CLASS_NAMED("UserFeedback") SWIFT_DEPRECATED_MSG("Use SentryFeedback.")
+@interface SentryUserFeedback : NSObject <SentrySerializable>
+/// The eventId of the event to which the user feedback is associated.
+@property (nonatomic, readonly, strong) SentryId * _Nonnull eventId;
+/// The name of the user.
+@property (nonatomic, copy) NSString * _Nonnull name;
+/// The email of the user.
+@property (nonatomic, copy) NSString * _Nonnull email;
+/// Comments of the user about what happened.
+@property (nonatomic, copy) NSString * _Nonnull comments;
+/// Initializes SentryUserFeedback and sets the required eventId.
+/// \param eventId The eventId of the event to which the user feedback is associated.
+///
+- (nonnull instancetype)initWithEventId:(SentryId * _Nonnull)eventId OBJC_DESIGNATED_INITIALIZER;
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
 
 #endif
 #if __has_attribute(external_source_symbol)

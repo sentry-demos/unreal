@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2025 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "AndroidSentryTransaction.h"
 #include "AndroidSentrySpan.h"
@@ -68,14 +68,14 @@ void FAndroidSentryTransaction::RemoveTag(const FString& key)
 	SetTag(key, TEXT(""));
 }
 
-void FAndroidSentryTransaction::SetData(const FString& key, const TMap<FString, FString>& values)
+void FAndroidSentryTransaction::SetData(const FString& key, const TMap<FString, FSentryVariant>& values)
 {
-	CallMethod<void>(SetDataMethod, *GetJString(key), FAndroidSentryConverters::StringMapToNative(values)->GetJObject());
+	CallMethod<void>(SetDataMethod, *GetJString(key), FAndroidSentryConverters::VariantMapToNative(values)->GetJObject());
 }
 
 void FAndroidSentryTransaction::RemoveData(const FString& key)
 {
-	SetData(key, TMap<FString, FString>());
+	CallMethod<void>(SetDataMethod, *GetJString(key), nullptr);
 }
 
 void FAndroidSentryTransaction::GetTrace(FString& name, FString& value)

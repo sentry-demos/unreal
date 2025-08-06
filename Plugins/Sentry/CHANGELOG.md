@@ -1,5 +1,131 @@
 # Changelog
 
+## 1.0.0-beta.7
+
+### Fixes
+
+- The FAB plugin version no longer opts out of Crashpad handler configuration ([#1028](https://github.com/getsentry/sentry-unreal/pull/1028))
+- The FAB version of the plugin builds successfully on Android and iOS ([#1027](https://github.com/getsentry/sentry-unreal/pull/1027))
+
+## 1.0.0-beta.6
+
+### Fixes
+
+- No more warnings about missing GPU crash dump attachment when capturing non-GPU events ([#1022](https://github.com/getsentry/sentry-unreal/pull/1022))
+
+### Dependencies
+
+- Bump CLI from v2.50.0 to v2.50.2 ([#1020](https://github.com/getsentry/sentry-unreal/pull/1020), [#1021](https://github.com/getsentry/sentry-unreal/pull/1021))
+  - [changelog](https://github.com/getsentry/sentry-cli/blob/master/CHANGELOG.md#2502)
+  - [diff](https://github.com/getsentry/sentry-cli/compare/2.50.0...2.50.2)
+
+## 1.0.0-beta.5
+
+### Breaking Changes
+
+- On mobile platforms, the default traces sampler will no longer be created automatically if one is not explicitly configured in the plugin settings (`General -> Performance Monitoring`).
+- If upgrading from a version prior to 0.9.0 legacy settings `DsnUrl`, `EnableVerboseLogging` and `EnableStackTrace` will no longer be read from the project configuration file automatically. Instead, you must re-set them in plugin settings to adopt the new format.
+
+### Fixes
+
+- Avoid irrelevant screenshot being attached to captured crash event ([#1019](https://github.com/getsentry/sentry-unreal/pull/1019))
+
+### Dependencies
+
+- Bump CLI from v2.46.0 to v2.50.0 ([#989](https://github.com/getsentry/sentry-unreal/pull/989), [#1001](https://github.com/getsentry/sentry-unreal/pull/1001), [#1015](https://github.com/getsentry/sentry-unreal/pull/1015), [#1016](https://github.com/getsentry/sentry-unreal/pull/1016))
+  - [changelog](https://github.com/getsentry/sentry-cli/blob/master/CHANGELOG.md#2500)
+  - [diff](https://github.com/getsentry/sentry-cli/compare/2.46.0...2.50.0)
+- Bump Java SDK (Android) from v8.16.0 to v8.17.0 ([#994](https://github.com/getsentry/sentry-unreal/pull/994))
+  - [changelog](https://github.com/getsentry/sentry-java/blob/main/CHANGELOG.md#8170)
+  - [diff](https://github.com/getsentry/sentry-java/compare/8.16.0...8.17.0)
+- Bump Cocoa SDK (iOS and Mac) from v8.53.1 to v8.53.2 ([#993](https://github.com/getsentry/sentry-unreal/pull/993))
+  - [changelog](https://github.com/getsentry/sentry-cocoa/blob/main/CHANGELOG.md#8532)
+  - [diff](https://github.com/getsentry/sentry-cocoa/compare/8.53.1...8.53.2)
+
+## 1.0.0-beta.4
+
+### Breaking Changes
+
+- "Value" suffix has been removed from the get/set function names for tags and extras in `SentryScope`.
+- Type of input parameters in certain public API functions was changed from `FString` to `FSentryVariant`:
+  - Get/Set functions for contexts and extras in `SentryScope`
+  - Get/Set functions for arbitrary data in `SentryBreadcrumb`
+  - Get/Set functions for arbitrary data in `SentryTransaction` and `SentrySpan`
+  - `AddBreadcrumbWithParams` and `SentContext` functions in `SentrySubsystem`
+  - `CreateSentryBreadcrumb` function in `SentryLibrary`
+
+### Features
+
+- Adopt generic variant type in public APIs ([#971](https://github.com/getsentry/sentry-unreal/pull/971))
+- Add runtime attachments support for Windows/Linux ([#982](https://github.com/getsentry/sentry-unreal/pull/982))
+
+### Dependencies
+
+- Bump Native SDK from v0.9.0 to v0.9.1 ([#976](https://github.com/getsentry/sentry-unreal/pull/976))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#091)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.9.0...0.9.1)
+- Bump Java SDK (Android) from v8.14.0 to v8.16.0 ([#980](https://github.com/getsentry/sentry-unreal/pull/980), [#983](https://github.com/getsentry/sentry-unreal/pull/983), [#984](https://github.com/getsentry/sentry-unreal/pull/984))
+  - [changelog](https://github.com/getsentry/sentry-java/blob/main/CHANGELOG.md#8160)
+  - [diff](https://github.com/getsentry/sentry-java/compare/8.14.0...8.16.0)
+- Bump Cocoa SDK (iOS and Mac) from v8.52.1 to v8.53.1 ([#981](https://github.com/getsentry/sentry-unreal/pull/981))
+  - [changelog](https://github.com/getsentry/sentry-cocoa/blob/main/CHANGELOG.md#8531)
+  - [diff](https://github.com/getsentry/sentry-cocoa/compare/8.52.1...8.53.1)
+- Bump Android Gradle Plugin from v4.11.0 to v5.8.0 ([#975](https://github.com/getsentry/sentry-unreal/pull/975))
+  - [changelog](https://github.com/getsentry/sentry-android-gradle-plugin/blob/main/CHANGELOG.md#580)
+  - [diff](https://github.com/getsentry/sentry-android-gradle-plugin/compare/4.11.0...5.8.0)
+
+## 1.0.0-beta.3
+
+### Breaking Changes
+
+- `Environment` and `Dist` get/set functions were removed from the `Scope` class and now these properties have to be set in plugin settings instead. This unifies their usage across all platforms supported by the Unreal SDK.
+- `ConfigureScope` function was removed from `SentrySubsystem` class following the [Hub & Scope refactoring guidelines](https://develop.sentry.dev/sdk/miscellaneous/hub_and_scope_refactoring/) which recommend deprecating this API.
+- `Initialize` function was removed from `SamplingContext` class which is supposed to be created internally by the SDK.
+
+### Features
+
+- Add native local scope for Windows/Linux ([#928](https://github.com/getsentry/sentry-unreal/pull/928))
+- Add option to delay app shutdown until Crashpad completes crash report upload ([#953](https://github.com/getsentry/sentry-unreal/pull/953))
+- Add API allowing to get/set event's `tag`, `context` and `extra` properties ([#940](https://github.com/getsentry/sentry-unreal/pull/940))
+
+### Fixes
+
+- Sampling context, span and transaction classes are no longer re-defined when packaging for Android ([#959](https://github.com/getsentry/sentry-unreal/pull/959))
+
+### Dependencies
+
+- Bump Java SDK (Android) from v8.13.1 to v8.14.0 ([#932](https://github.com/getsentry/sentry-unreal/pull/932), [#965](https://github.com/getsentry/sentry-unreal/pull/965))
+  - [changelog](https://github.com/getsentry/sentry-java/blob/main/CHANGELOG.md#8140)
+  - [diff](https://github.com/getsentry/sentry-java/compare/8.13.1...8.14.0)
+- Bump CLI from v2.45.0 to v2.46.0 ([#931](https://github.com/getsentry/sentry-unreal/pull/931))
+  - [changelog](https://github.com/getsentry/sentry-cli/blob/master/CHANGELOG.md#2460)
+  - [diff](https://github.com/getsentry/sentry-cli/compare/2.45.0...2.46.0)
+- Bump Cocoa SDK (iOS and Mac) from v8.51.1 to v8.52.1 ([#944](https://github.com/getsentry/sentry-unreal/pull/944), [#949](https://github.com/getsentry/sentry-unreal/pull/949))
+  - [changelog](https://github.com/getsentry/sentry-cocoa/blob/main/CHANGELOG.md#8521)
+  - [diff](https://github.com/getsentry/sentry-cocoa/compare/8.51.1...8.52.1)
+- Bump Native SDK from v0.8.5 to v0.9.0 ([#950](https://github.com/getsentry/sentry-unreal/pull/950), [#955](https://github.com/getsentry/sentry-unreal/pull/955))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#090)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.8.5...0.9.0)
+
+## 1.0.0-beta.2
+
+### Features
+
+- Add API allowing to get/set event fingerprint ([#920](https://github.com/getsentry/sentry-unreal/pull/920))
+- The image buffer is now allocated on the heap to prevent stack overflow during screenshot capture on Windows ([#900](https://github.com/getsentry/sentry-unreal/pull/900))
+
+### Dependencies
+
+- Bump Java SDK (Android) from v8.11.1 to v8.13.1 ([#911](https://github.com/getsentry/sentry-unreal/pull/911), [#929](https://github.com/getsentry/sentry-unreal/pull/929))
+  - [changelog](https://github.com/getsentry/sentry-java/blob/main/CHANGELOG.md#8131)
+  - [diff](https://github.com/getsentry/sentry-java/compare/8.11.1...8.13.1)
+- Bump Native SDK from v0.8.4 to v0.8.5 ([#912](https://github.com/getsentry/sentry-unreal/pull/912))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#085)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.8.4...0.8.5)
+- Bump Cocoa SDK (iOS and Mac) from v8.50.1 to v8.51.1 ([#913](https://github.com/getsentry/sentry-unreal/pull/913), [#916](https://github.com/getsentry/sentry-unreal/pull/916), [#925](https://github.com/getsentry/sentry-unreal/pull/925))
+  - [changelog](https://github.com/getsentry/sentry-cocoa/blob/main/CHANGELOG.md#8511)
+  - [diff](https://github.com/getsentry/sentry-cocoa/compare/8.50.1...8.51.1)
+
 ## 1.0.0-beta.1
 
 ### Fixes

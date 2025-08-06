@@ -2,8 +2,6 @@
 
 #include "IOS/IOSSentrySubsystem.h"
 
-#include "IOS/IOSAppDelegate.h"
-
 #include "SentryDefines.h"
 #include "SentrySettings.h"
 
@@ -14,6 +12,17 @@
 #include "Misc/CoreDelegates.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+
+// In UE 5.5 and newer, PLATFORM_VISIONOS may be incorrectly set to true during iOS packaging
+// causing build errors due to engine's IOSAppDelegate.h including visionOS-specific headers.
+#pragma push_macro("PLATFORM_VISIONOS")
+
+#undef PLATFORM_VISIONOS
+#define PLATFORM_VISIONOS 0
+
+#include "IOS/IOSAppDelegate.h"
+
+#pragma pop_macro("PLATFORM_VISIONOS")
 
 static FIOSSentrySubsystem* GIOSSentrySubsystem = nullptr;
 
@@ -46,7 +55,7 @@ void RestoreDefaultSignalHandlers()
 
 static void IOSSentrySignalHandler(int Signal, siginfo_t* Info, void* Context)
 {
-	if (GIOSSentrySubsystem && GIOSSentrySubsystem->IsEnabled())
+	if (GIOSSentrySubsystem && GIOSSentrySubsystem->IsEnabled() && GIOSSentrySubsystem->IsScreenshotEnabled())
 	{
 		GIOSSentrySubsystem->TryCaptureScreenshot();
 	}
@@ -72,14 +81,22 @@ void InstallSentrySignalHandler()
 	sigaction(SIGSYS, &Action, NULL);
 }
 
-void FIOSSentrySubsystem::InitWithSettings(const USentrySettings* Settings, USentryBeforeSendHandler* BeforeSendHandler, USentryBeforeBreadcrumbHandler* BeforeBreadcrumbHandler, USentryTraceSampler* TraceSampler)
+void FIOSSentrySubsystem::InitWithSettings(const USentrySettings* settings, USentryBeforeSendHandler* beforeSendHandler, USentryBeforeBreadcrumbHandler* beforeBreadcrumbHandler, USentryTraceSampler* traceSampler)
 {
 	GIOSSentrySubsystem = this;
 
 	SaveDefaultSignalHandlers();
 	InstallSentrySignalHandler();
 
-	FAppleSentrySubsystem::InitWithSettings(Settings, BeforeSendHandler, BeforeBreadcrumbHandler, TraceSampler);
+	FAppleSentrySubsystem::InitWithSettings(settings, beforeSendHandler, beforeBreadcrumbHandler, traceSampler);
+}
+
+void FIOSSentrySubsystem::HandleAssert()
+{
+	if (isScreenshotAttachmentEnabled)
+	{
+		TryCaptureScreenshot();
+	}
 }
 
 FString FIOSSentrySubsystem::TryCaptureScreenshot() const

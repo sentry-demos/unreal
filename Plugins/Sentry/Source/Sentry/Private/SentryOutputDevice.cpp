@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2025 Sentry. All Rights Reserved.
+// Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "SentryOutputDevice.h"
 
@@ -41,7 +41,7 @@ void FSentryOutputDevice::Serialize(const TCHAR* V, ELogVerbosity::Type Verbosit
 		return;
 	}
 
-	SentrySubsystem->AddBreadcrumbWithParams(Message, Category.ToString(), FString(), TMap<FString, FString>(), BreadcrumbLevel);
+	SentrySubsystem->AddBreadcrumbWithParams(Message, Category.ToString(), FString(), TMap<FString, FSentryVariant>(), BreadcrumbLevel);
 }
 
 bool FSentryOutputDevice::CanBeUsedOnAnyThread() const

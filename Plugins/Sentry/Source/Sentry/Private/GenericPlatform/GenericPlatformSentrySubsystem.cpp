@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Sentry. All Rights Reserved.
 
 #include "GenericPlatformSentrySubsystem.h"
+#include "GenericPlatformSentryAttachment.h"
 #include "GenericPlatformSentryBreadcrumb.h"
 #include "GenericPlatformSentryEvent.h"
 #include "GenericPlatformSentryId.h"
@@ -63,7 +64,7 @@ void PrintVerboseLog(sentry_level_t level, const char* message, va_list args, vo
 {
 	if (closure)
 	{
-		return StaticCast<FGenericPlatformSentrySubsystem*>(closure)->OnBeforeSend(event, hint, closure);
+		return StaticCast<FGenericPlatformSentrySubsystem*>(closure)->OnBeforeSend(event, hint, closure, false);
 	}
 	else
 	{
@@ -95,14 +96,19 @@ void PrintVerboseLog(sentry_level_t level, const char* message, va_list args, vo
 	}
 }
 
-sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeSend(sentry_value_t event, void* hint, void* closure)
+sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeSend(sentry_value_t event, void* hint, void* closure, bool isCrash)
 {
 	if (!closure || this != closure)
 	{
 		return event;
 	}
 
-	TSharedPtr<FGenericPlatformSentryEvent> Event = MakeShareable(new FGenericPlatformSentryEvent(event));
+	USentryBeforeSendHandler* Handler = GetBeforeSendHandler();
+	if (!Handler)
+	{
+		// If custom handler isn't set skip further processing
+		return event;
+	}
 
 	if (FUObjectThreadContext::Get().IsRoutingPostLoad)
 	{
@@ -119,9 +125,9 @@ sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeSend(sentry_value_t even
 		return event;
 	}
 
-	USentryEvent* EventToProcess = USentryEvent::Create(Event);
+	USentryEvent* EventToProcess = USentryEvent::Create(MakeShareable(new FGenericPlatformSentryEvent(event, isCrash)));
 
-	USentryEvent* ProcessedEvent = GetBeforeSendHandler()->HandleBeforeSend(EventToProcess, nullptr);
+	USentryEvent* ProcessedEvent = Handler->HandleBeforeSend(EventToProcess, nullptr);
 
 	return ProcessedEvent ? event : sentry_value_new_null();
 }
@@ -133,6 +139,13 @@ sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeBreadcrumb(sentry_value_
 {
 	if (!closure || this != closure)
 	{
+		return breadcrumb;
+	}
+
+	USentryBeforeBreadcrumbHandler* Handler = GetBeforeBreadcrumbHandler();
+	if (!Handler)
+	{
+		// If custom handler isn't set skip further processing
 		return breadcrumb;
 	}
 
@@ -150,51 +163,28 @@ sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeBreadcrumb(sentry_value_
 		return breadcrumb;
 	}
 
-	TSharedPtr<FGenericPlatformSentryBreadcrumb> Breadcrumb = MakeShareable(new FGenericPlatformSentryBreadcrumb(breadcrumb));
+	USentryBreadcrumb* BreadcrumbToProcess = USentryBreadcrumb::Create(MakeShareable(new FGenericPlatformSentryBreadcrumb(breadcrumb)));
 
-	USentryBreadcrumb* BreadcrumbToProcess = USentryBreadcrumb::Create(Breadcrumb);
-
-	USentryBreadcrumb* ProcessedBreadcrumb = GetBeforeBreadcrumbHandler()->HandleBeforeBreadcrumb(BreadcrumbToProcess, nullptr);
+	USentryBreadcrumb* ProcessedBreadcrumb = Handler->HandleBeforeBreadcrumb(BreadcrumbToProcess, nullptr);
 
 	return ProcessedBreadcrumb ? breadcrumb : sentry_value_new_null();
 }
 
 sentry_value_t FGenericPlatformSentrySubsystem::OnCrash(const sentry_ucontext_t* uctx, sentry_value_t event, void* closure)
 {
-	if (!closure || this != closure)
+	if (isScreenshotAttachmentEnabled)
 	{
-		return event;
+		TryCaptureScreenshot();
 	}
 
-	TryCaptureScreenshot();
-
-	if (GIsGPUCrashed)
+	if (GIsGPUCrashed && isGpuDumpAttachmentEnabled)
 	{
-		IFileManager::Get().Copy(*GetGpuDumpBackupPath(), *SentryFileUtils::GetGpuDumpPath());
+		TryCaptureGpuDump();
 	}
 
-	TSharedPtr<FGenericPlatformSentryEvent> Event = MakeShareable(new FGenericPlatformSentryEvent(event, true));
-
-	if (FUObjectThreadContext::Get().IsRoutingPostLoad)
-	{
-		UE_LOG(LogSentrySdk, Log, TEXT("Executing `beforeSend` handler is not allowed when post-loading."));
-		return event;
-	}
-
-	if (IsGarbageCollecting())
-	{
-		// If crash occurred during garbage collection we can't instantiate UObjects safely or obtain a GC lock
-		// since there is no guarantee it will be ever freed.
-		// In this case crash event will be reported without calling a `beforeSend` handler.
-		UE_LOG(LogSentrySdk, Log, TEXT("Executing `beforeSend` handler is not allowed during garbage collection."));
-		return event;
-	}
-
-	USentryEvent* EventToProcess = USentryEvent::Create(Event);
-
-	USentryEvent* ProcessedEvent = GetBeforeSendHandler()->HandleBeforeSend(EventToProcess, nullptr);
-
-	return ProcessedEvent ? event : sentry_value_new_null();
+	// At this point crash events are handled the same way as non-fatal ones,
+	// so we defer to `OnBeforeSend` to invoke the custom `beforeSend` handler (if configured)
+	return OnBeforeSend(event, nullptr, closure, true);
 }
 
 void FGenericPlatformSentrySubsystem::InitCrashReporter(const FString& release, const FString& environment)
@@ -205,6 +195,41 @@ void FGenericPlatformSentrySubsystem::InitCrashReporter(const FString& release, 
 	crashReporter->SetEnvironment(environment);
 }
 
+void FGenericPlatformSentrySubsystem::AddFileAttachment(TSharedPtr<ISentryAttachment> attachment)
+{
+	TSharedPtr<FGenericPlatformSentryAttachment> platformAttachment = StaticCastSharedPtr<FGenericPlatformSentryAttachment>(attachment);
+
+	sentry_attachment_t* nativeAttachment =
+		sentry_attach_file(TCHAR_TO_UTF8(*platformAttachment->GetPath()));
+
+	if (!platformAttachment->GetFilename().IsEmpty())
+		sentry_attachment_set_filename(nativeAttachment, TCHAR_TO_UTF8(*platformAttachment->GetFilename()));
+
+	if (!platformAttachment->GetContentType().IsEmpty())
+		sentry_attachment_set_content_type(nativeAttachment, TCHAR_TO_UTF8(*platformAttachment->GetContentType()));
+
+	platformAttachment->SetNativeObject(nativeAttachment);
+
+	attachments.Add(platformAttachment);
+}
+
+void FGenericPlatformSentrySubsystem::AddByteAttachment(TSharedPtr<ISentryAttachment> attachment)
+{
+	TSharedPtr<FGenericPlatformSentryAttachment> platformAttachment = StaticCastSharedPtr<FGenericPlatformSentryAttachment>(attachment);
+
+	const TArray<uint8>& byteBuf = platformAttachment->GetDataByRef();
+
+	sentry_attachment_t* nativeAttachment =
+		sentry_attach_bytes(reinterpret_cast<const char*>(byteBuf.GetData()), byteBuf.Num(), TCHAR_TO_UTF8(*platformAttachment->GetFilename()));
+
+	if (!platformAttachment->GetContentType().IsEmpty())
+		sentry_attachment_set_content_type(nativeAttachment, TCHAR_TO_UTF8(*platformAttachment->GetContentType()));
+
+	platformAttachment->SetNativeObject(nativeAttachment);
+
+	attachments.Add(platformAttachment);
+}
+
 FGenericPlatformSentrySubsystem::FGenericPlatformSentrySubsystem()
 	: beforeSend(nullptr)
 	, beforeBreadcrumb(nullptr)
@@ -213,6 +238,7 @@ FGenericPlatformSentrySubsystem::FGenericPlatformSentrySubsystem()
 	, isStackTraceEnabled(true)
 	, isPiiAttachmentEnabled(false)
 	, isScreenshotAttachmentEnabled(false)
+	, isGpuDumpAttachmentEnabled(false)
 {
 }
 
@@ -244,17 +270,14 @@ void FGenericPlatformSentrySubsystem::InitWithSettings(const USentrySettings* se
 		databaseParentPath = FPaths::ProjectUserDir();
 	}
 
-	if (settings->AttachScreenshot)
+	isScreenshotAttachmentEnabled = settings->AttachScreenshot;
+	if (isScreenshotAttachmentEnabled)
 	{
-		isScreenshotAttachmentEnabled = true;
-
-		ConfigureScreenshotAttachment(options);
+		// Clear screenshot captured during previous session if any
+		IFileManager::Get().DeleteDirectory(*FPaths::Combine(GetDatabasePath(), TEXT("screenshots")), false, true);
 	}
 
-	if (settings->AttachGpuDump)
-	{
-		ConfigureGpuDumpAttachment(options);
-	}
+	isGpuDumpAttachmentEnabled = settings->AttachGpuDump;
 
 	if (settings->UseProxy)
 	{
@@ -273,16 +296,11 @@ void FGenericPlatformSentrySubsystem::InitWithSettings(const USentrySettings* se
 	ConfigureHandlerPath(options);
 	ConfigureDatabasePath(options);
 	ConfigureCertsPath(options);
+	ConfigureNetworkConnectFunc(options);
 
 	sentry_options_set_release(options, TCHAR_TO_ANSI(settings->OverrideReleaseName ? *settings->Release : *settings->GetFormattedReleaseName()));
 
-	sentry_options_set_dsn(options, TCHAR_TO_ANSI(*settings->Dsn));
-#if WITH_EDITOR
-	if (!settings->EditorDsn.IsEmpty())
-	{
-		sentry_options_set_dsn(options, TCHAR_TO_ANSI(*settings->EditorDsn));
-	}
-#endif // WITH_EDITOR
+	sentry_options_set_dsn(options, TCHAR_TO_ANSI(*settings->GetEffectiveDsn()));
 	sentry_options_set_environment(options, TCHAR_TO_ANSI(*settings->Environment));
 	sentry_options_set_dist(options, TCHAR_TO_ANSI(*settings->Dist));
 	sentry_options_set_logger(options, PrintVerboseLog, nullptr);
@@ -355,7 +373,7 @@ void FGenericPlatformSentrySubsystem::AddBreadcrumb(TSharedPtr<ISentryBreadcrumb
 	sentry_add_breadcrumb(StaticCastSharedPtr<FGenericPlatformSentryBreadcrumb>(breadcrumb)->GetNativeObject());
 }
 
-void FGenericPlatformSentrySubsystem::AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FString>& Data, ESentryLevel Level)
+void FGenericPlatformSentrySubsystem::AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FSentryVariant>& Data, ESentryLevel Level)
 {
 	TSharedPtr<FGenericPlatformSentryBreadcrumb> Breadcrumb = MakeShareable(new FGenericPlatformSentryBreadcrumb());
 	Breadcrumb->SetMessage(Message);
@@ -379,6 +397,42 @@ void FGenericPlatformSentrySubsystem::AddBreadcrumbWithParams(const FString& Mes
 void FGenericPlatformSentrySubsystem::ClearBreadcrumbs()
 {
 	// Not implemented in sentry-native
+}
+
+void FGenericPlatformSentrySubsystem::AddAttachment(TSharedPtr<ISentryAttachment> attachment)
+{
+	if (!attachment->GetPath().IsEmpty())
+	{
+		AddFileAttachment(attachment);
+	}
+	else
+	{
+		AddByteAttachment(attachment);
+	}
+}
+
+void FGenericPlatformSentrySubsystem::RemoveAttachment(TSharedPtr<ISentryAttachment> attachment)
+{
+	TSharedPtr<FGenericPlatformSentryAttachment> platformAttachment = StaticCastSharedPtr<FGenericPlatformSentryAttachment>(attachment);
+
+	sentry_attachment_t* nativeAttachment = platformAttachment->GetNativeObject();
+
+	if (!nativeAttachment)
+		return;
+
+	sentry_remove_attachment(nativeAttachment);
+
+	platformAttachment->SetNativeObject(nullptr);
+}
+
+void FGenericPlatformSentrySubsystem::ClearAttachments()
+{
+	for (auto& attachment : attachments)
+	{
+		RemoveAttachment(attachment);
+	}
+
+	attachments.Empty();
 }
 
 TSharedPtr<ISentryId> FGenericPlatformSentrySubsystem::CaptureMessage(const FString& message, ESentryLevel level)
@@ -499,9 +553,9 @@ void FGenericPlatformSentrySubsystem::RemoveUser()
 	}
 }
 
-void FGenericPlatformSentrySubsystem::SetContext(const FString& key, const TMap<FString, FString>& values)
+void FGenericPlatformSentrySubsystem::SetContext(const FString& key, const TMap<FString, FSentryVariant>& values)
 {
-	sentry_set_context(TCHAR_TO_UTF8(*key), FGenericPlatformSentryConverters::StringMapToNative(values));
+	sentry_set_context(TCHAR_TO_UTF8(*key), FGenericPlatformSentryConverters::VariantMapToNative(values));
 
 	if (crashReporter)
 	{
@@ -604,25 +658,35 @@ USentryBeforeBreadcrumbHandler* FGenericPlatformSentrySubsystem::GetBeforeBreadc
 	return beforeBreadcrumb;
 }
 
-void FGenericPlatformSentrySubsystem::TryCaptureScreenshot() const
+void FGenericPlatformSentrySubsystem::TryCaptureScreenshot()
 {
-	if (!isScreenshotAttachmentEnabled)
+	const FString& ScreenshotPath = GetScreenshotPath();
+
+	if (!SentryScreenshotUtils::CaptureScreenshot(ScreenshotPath))
 	{
-		UE_LOG(LogSentrySdk, Log, TEXT("Screenshot attachment is disabled in plugin settings."));
+		// Screenshot capturing is a best-effort solution so if one wasn't captured skip the attachment
 		return;
 	}
 
-	SentryScreenshotUtils::CaptureScreenshot(GetScreenshotPath());
+	TSharedPtr<ISentryAttachment> ScreenshotAttachment =
+		MakeShareable(new FGenericPlatformSentryAttachment(ScreenshotPath, TEXT("screenshot.png"), TEXT("image/png")));
+
+	AddFileAttachment(ScreenshotAttachment);
 }
 
-FString FGenericPlatformSentrySubsystem::GetGpuDumpBackupPath() const
+void FGenericPlatformSentrySubsystem::TryCaptureGpuDump()
 {
-	static const FString DateTimeString = FDateTime::Now().ToString();
+	const FString& GpuDumpPath = SentryFileUtils::GetGpuDumpPath();
 
-	const FString GpuDumpPath = FPaths::Combine(GetDatabasePath(), TEXT("gpudumps"), *FString::Printf(TEXT("UEAftermath-%s.nv-gpudmp"), *DateTimeString));
-	const FString GpuDumpFullPath = FPaths::ConvertRelativePathToFull(GpuDumpPath);
+	if (!IFileManager::Get().FileExists(*GpuDumpPath))
+	{
+		return;
+	}
 
-	return GpuDumpFullPath;
+	TSharedPtr<ISentryAttachment> GpuDumpAttachment =
+		MakeShareable(new FGenericPlatformSentryAttachment(GpuDumpPath, FPaths::GetCleanFilename(GpuDumpPath), TEXT("application/octet-stream")));
+
+	AddFileAttachment(GpuDumpAttachment);
 }
 
 FString FGenericPlatformSentrySubsystem::GetHandlerPath() const
@@ -643,7 +707,7 @@ FString FGenericPlatformSentrySubsystem::GetDatabasePath() const
 
 FString FGenericPlatformSentrySubsystem::GetScreenshotPath() const
 {
-	const FString ScreenshotPath = FPaths::Combine(GetDatabasePath(), TEXT("screenshots"), TEXT("screenshot.png"));
+	const FString ScreenshotPath = FPaths::Combine(GetDatabasePath(), TEXT("screenshots"), FString::Printf(TEXT("screenshot-%s.png"), *FDateTime::Now().ToString()));
 	const FString ScreenshotFullPath = FPaths::ConvertRelativePathToFull(ScreenshotPath);
 
 	return ScreenshotFullPath;

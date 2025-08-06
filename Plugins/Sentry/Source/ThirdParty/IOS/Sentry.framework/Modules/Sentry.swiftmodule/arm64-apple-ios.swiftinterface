@@ -17,7 +17,7 @@ import _Concurrency
 import _StringProcessing
 import _SwiftConcurrencyShims
 extension Sentry.User : Swift.Decodable {
-  @available(*, deprecated, message: "This method is only deprecated to silence the deprecation warning of the property segment. Our Xcode project has deprecations as warnings and warnings as errors configured. Therefore, compilation fails without marking this init method as deprecated. It is safe to use this deprecated init method. Instead of turning off deprecation warnings for the whole project, we accept the tradeoff of marking this init method as deprecated because we don't expect many users to use it. Sadly, Swift doesn't offer a better way of silencing a deprecation warning.")
+  @available(*, deprecated)
   required convenience public init(from decoder: any Swift.Decoder) throws
 }
 @objc @objcMembers public class SentryFeedback : ObjectiveC.NSObject {
@@ -39,8 +39,22 @@ extension Sentry.User : Swift.Decodable {
 extension Sentry.SentryFeedback : Sentry.SentrySerializable {
   @objc dynamic public func serialize() -> [Swift.String : Any]
 }
-extension Sentry.SentryEventDecodable : Swift.Decodable {
+@objc(SentryEventDecodable) open class SentryEventDecodable : Sentry.Event, Swift.Decodable {
   required convenience public init(from decoder: any Swift.Decoder) throws
+  @objc required dynamic public init()
+  @objc deinit
+}
+@available(*, deprecated, message: "Use SentryFeedback.")
+@objc(SentryUserFeedback) open class UserFeedback : ObjectiveC.NSObject, Sentry.SentrySerializable {
+  @objc open var eventId: Sentry.SentryId {
+    get
+  }
+  @objc open var name: Swift.String
+  @objc open var email: Swift.String
+  @objc open var comments: Swift.String
+  @objc public init(eventId: Sentry.SentryId)
+  @objc open func serialize() -> [Swift.String : Any]
+  @objc deinit
 }
 extension Sentry.Frame : Swift.Decodable {
   required convenience public init(from decoder: any Swift.Decoder) throws
@@ -141,12 +155,6 @@ extension Sentry.SentryMessage : Swift.Decodable {
   @objc override dynamic public init()
   @objc deinit
 }
-@objc @_inheritsConvenienceInitializers @objcMembers public class SentryExperimentalOptions : ObjectiveC.NSObject {
-  @objc public var enableDataSwizzling: Swift.Bool
-  @objc public var enableFileManagerSwizzling: Swift.Bool
-  @objc override dynamic public init()
-  @objc deinit
-}
 @objc @_inheritsConvenienceInitializers @objcMembers public class SentryProfileOptions : ObjectiveC.NSObject {
   @objc public enum SentryProfileLifecycle : Swift.Int {
     case manual
@@ -178,6 +186,11 @@ extension Sentry.SentryMessage : Swift.Decodable {
   @objc override final public var hash: Swift.Int {
     @objc get
   }
+  @objc deinit
+}
+@objc @_inheritsConvenienceInitializers @_hasMissingDesignatedInitializers @objcMembers public class SentryRedactViewHelper : ObjectiveC.NSObject {
+  @objc public static func clipOutView(_ view: UIKit.UIView)
+  @objc public static func maskSwiftUI(_ view: UIKit.UIView)
   @objc deinit
 }
 @objc public enum SentryTransactionNameSource : Swift.Int {
@@ -221,11 +234,6 @@ extension UIKit.UIView {
   @_Concurrency.MainActor(unsafe) public func sentryReplayMask()
   @_Concurrency.MainActor(unsafe) public func sentryReplayUnmask()
 }
-@objc @_inheritsConvenienceInitializers @_hasMissingDesignatedInitializers @objcMembers public class SentryRedactViewHelper : ObjectiveC.NSObject {
-  @objc public static func clipOutView(_ view: UIKit.UIView)
-  @objc public static func maskSwiftUI(_ view: UIKit.UIView)
-  @objc deinit
-}
 @objc public protocol SentryUIViewControllerDescriptor : ObjectiveC.NSObjectProtocol {
   @objc var sentryName: Swift.String { get }
 }
@@ -235,6 +243,18 @@ extension Swift.FixedWidthInteger {
         defer { lhs += 1 }
         return lhs
     }
+}
+@objc @_inheritsConvenienceInitializers @objcMembers public class SentryExperimentalOptions : ObjectiveC.NSObject {
+  @objc public var enableDataSwizzling: Swift.Bool
+  @objc public var enableFileManagerSwizzling: Swift.Bool
+  @objc public var enableUnhandledCPPExceptionsV2: Swift.Bool
+  @objc override dynamic public init()
+  @objc deinit
+}
+@objc extension Sentry.Options {
+  @objc dynamic open var experimental: Sentry.SentryExperimentalOptions {
+    @objc get
+  }
 }
 extension Sentry.SentryRequest : Swift.Decodable {
   required convenience public init(from decoder: any Swift.Decoder) throws
@@ -291,6 +311,18 @@ extension Sentry.SentryRequest : Swift.Decodable {
 }
 extension Sentry.SentryNSError : Swift.Decodable {
   required convenience public init(from decoder: any Swift.Decoder) throws
+}
+public enum SentryRedactRegionType : Swift.String, Swift.Codable {
+  case redact
+  case clipOut
+  case clipBegin
+  case clipEnd
+  case redactSwiftUI
+  public init?(rawValue: Swift.String)
+  public typealias RawValue = Swift.String
+  public var rawValue: Swift.String {
+    get
+  }
 }
 extension Foundation.Data {
   public init(contentsOfWithSentryTracing url: Foundation.URL, options: Foundation.Data.ReadingOptions = []) throws
@@ -363,3 +395,6 @@ extension Sentry.SentryTransactionNameSource : Swift.RawRepresentable {}
 extension Sentry.SentryLevel : Swift.Equatable {}
 extension Sentry.SentryLevel : Swift.Hashable {}
 extension Sentry.SentryLevel : Swift.RawRepresentable {}
+extension Sentry.SentryRedactRegionType : Swift.Equatable {}
+extension Sentry.SentryRedactRegionType : Swift.Hashable {}
+extension Sentry.SentryRedactRegionType : Swift.RawRepresentable {}

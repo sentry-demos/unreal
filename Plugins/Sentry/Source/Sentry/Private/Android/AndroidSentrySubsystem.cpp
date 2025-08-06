@@ -2,6 +2,7 @@
 
 #include "AndroidSentrySubsystem.h"
 
+#include "AndroidSentryAttachment.h"
 #include "AndroidSentryBreadcrumb.h"
 #include "AndroidSentryEvent.h"
 #include "AndroidSentryId.h"
@@ -25,6 +26,7 @@
 #include "Utils/SentryFileUtils.h"
 
 #include "Dom/JsonObject.h"
+#include "Misc/OutputDeviceError.h"
 #include "Serialization/JsonSerializer.h"
 
 void FAndroidSentrySubsystem::InitWithSettings(const USentrySettings* settings, USentryBeforeSendHandler* beforeSendHandler, USentryBeforeBreadcrumbHandler* beforeBreadcrumbHandler, USentryTraceSampler* traceSampler)
@@ -45,11 +47,12 @@ void FAndroidSentrySubsystem::InitWithSettings(const USentrySettings* settings, 
 	SettingsJson->SetArrayField(TEXT("inAppExclude"), FAndroidSentryConverters::StrinArrayToJsonArray(settings->InAppExclude));
 	SettingsJson->SetBoolField(TEXT("sendDefaultPii"), settings->SendDefaultPii);
 	SettingsJson->SetBoolField(TEXT("enableAnrTracking"), settings->EnableAppNotRespondingTracking);
+	SettingsJson->SetBoolField(TEXT("enableAutoLogAttachment"), settings->EnableAutoLogAttachment);
 	if (settings->EnableTracing && settings->SamplingType == ESentryTracesSamplingType::UniformSampleRate)
 	{
 		SettingsJson->SetNumberField(TEXT("tracesSampleRate"), settings->TracesSampleRate);
 	}
-	if (settings->EnableTracing && settings->SamplingType == ESentryTracesSamplingType::TracesSampler)
+	if (settings->EnableTracing && settings->SamplingType == ESentryTracesSamplingType::TracesSampler && traceSampler != nullptr)
 	{
 		SettingsJson->SetNumberField(TEXT("tracesSampler"), (jlong)traceSampler);
 	}
@@ -57,16 +60,17 @@ void FAndroidSentrySubsystem::InitWithSettings(const USentrySettings* settings, 
 	{
 		SettingsJson->SetNumberField(TEXT("beforeBreadcrumb"), (jlong)beforeBreadcrumbHandler);
 	}
+	if (beforeSendHandler != nullptr)
+	{
+		SettingsJson->SetNumberField(TEXT("beforeSendHandler"), (jlong)beforeSendHandler);
+	}
 
 	FString SettingsJsonStr;
 	TSharedRef<TJsonWriter<>> JsonWriter = TJsonWriterFactory<>::Create(&SettingsJsonStr);
 	FJsonSerializer::Serialize(SettingsJson.ToSharedRef(), JsonWriter);
 
-	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava,
-		"init", "(Landroid/app/Activity;Ljava/lang/String;J)V",
-		FJavaWrapper::GameActivityThis,
-		*FSentryJavaObjectWrapper::GetJString(SettingsJsonStr),
-		(jlong)beforeSendHandler);
+	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "init", "(Landroid/app/Activity;Ljava/lang/String;)V",
+		FJavaWrapper::GameActivityThis, *FSentryJavaObjectWrapper::GetJString(SettingsJsonStr));
 }
 
 void FAndroidSentrySubsystem::Close()
@@ -109,7 +113,7 @@ void FAndroidSentrySubsystem::AddBreadcrumb(TSharedPtr<ISentryBreadcrumb> breadc
 		breadcrumbAndroid->GetJObject());
 }
 
-void FAndroidSentrySubsystem::AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FString>& Data, ESentryLevel Level)
+void FAndroidSentrySubsystem::AddBreadcrumbWithParams(const FString& Message, const FString& Category, const FString& Type, const TMap<FString, FSentryVariant>& Data, ESentryLevel Level)
 {
 	TSharedPtr<FAndroidSentryBreadcrumb> breadcrumbAndroid = MakeShareable(new FAndroidSentryBreadcrumb());
 	breadcrumbAndroid->SetMessage(Message);
@@ -125,6 +129,27 @@ void FAndroidSentrySubsystem::AddBreadcrumbWithParams(const FString& Message, co
 void FAndroidSentrySubsystem::ClearBreadcrumbs()
 {
 	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::Sentry, "clearBreadcrumbs", "()V");
+}
+
+void FAndroidSentrySubsystem::AddAttachment(TSharedPtr<ISentryAttachment> attachment)
+{
+	TSharedPtr<FAndroidSentryAttachment> attachmentAndroid = StaticCastSharedPtr<FAndroidSentryAttachment>(attachment);
+
+	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "addAttachment", "(Lio/sentry/Attachment;)V",
+		attachmentAndroid->GetJObject());
+}
+
+void FAndroidSentrySubsystem::RemoveAttachment(TSharedPtr<ISentryAttachment> attachment)
+{
+	TSharedPtr<FAndroidSentryAttachment> attachmentAndroid = StaticCastSharedPtr<FAndroidSentryAttachment>(attachment);
+
+	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "removeAttachment", "(Lio/sentry/Attachment;)V",
+		attachmentAndroid->GetJObject());
+}
+
+void FAndroidSentrySubsystem::ClearAttachments()
+{
+	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "clearAttachments", "()V");
 }
 
 TSharedPtr<ISentryId> FAndroidSentrySubsystem::CaptureMessage(const FString& message, ESentryLevel level)
@@ -196,10 +221,10 @@ void FAndroidSentrySubsystem::RemoveUser()
 	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::Sentry, "setUser", "(Lio/sentry/protocol/User;)V", nullptr);
 }
 
-void FAndroidSentrySubsystem::SetContext(const FString& key, const TMap<FString, FString>& values)
+void FAndroidSentrySubsystem::SetContext(const FString& key, const TMap<FString, FSentryVariant>& values)
 {
 	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::SentryBridgeJava, "setContext", "(Ljava/lang/String;Ljava/util/HashMap;)V",
-		*FSentryJavaObjectWrapper::GetJString(key), FAndroidSentryConverters::StringMapToNative(values)->GetJObject());
+		*FSentryJavaObjectWrapper::GetJString(key), FAndroidSentryConverters::VariantMapToNative(values)->GetJObject());
 }
 
 void FAndroidSentrySubsystem::SetTag(const FString& key, const FString& value)
@@ -273,4 +298,10 @@ TSharedPtr<ISentryTransactionContext> FAndroidSentrySubsystem::ContinueTrace(con
 		*FSentryJavaObjectWrapper::GetJString(sentryTrace), FAndroidSentryConverters::StringArrayToNative(baggageHeaders)->GetJObject());
 
 	return MakeShareable(new FAndroidSentryTransactionContext(*transactionContext));
+}
+
+void FAndroidSentrySubsystem::HandleAssert()
+{
+	GError->HandleError();
+	PLATFORM_BREAK();
 }
