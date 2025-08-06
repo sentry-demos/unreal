@@ -36,14 +36,29 @@ jobs:
             exit 1
           }
           
+          # List all files in download path
+          Write-Output "Files in download path:"
+          Get-ChildItem $downloadPath -Recurse
+          
           $exePath = Join-Path $downloadPath "SentryTower.exe"
+          Write-Output "Looking for executable at: $exePath"
+          
           if (!(Test-Path $exePath)) {
             Write-Error "SentryTower.exe not found at: $exePath"
             exit 1
           }
           
-          Write-Output "Running: $exePath -Unattended -nullrhi --idle"
-          $output = & $exePath -Unattended -nullrhi --idle 2>&1
-          Write-Output "Game console output:"
-          Write-Output $output
-          Write-Output "Exit code: $LASTEXITCODE"
+          # Check file properties
+          $fileInfo = Get-Item $exePath
+          Write-Output "File size: $($fileInfo.Length) bytes"
+          Write-Output "File exists: $(Test-Path $exePath)"
+          
+          Write-Output "Running: `"$exePath`" -Unattended -nullrhi --idle"
+          try {
+            $output = & $exePath -Unattended -nullrhi --idle 2>&1
+            Write-Output "Game console output:"
+            Write-Output $output
+            Write-Output "Exit code: $LASTEXITCODE"
+          } catch {
+            Write-Error "Failed to execute: $($_.Exception.Message)"
+          }
