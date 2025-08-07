@@ -4,22 +4,43 @@
 
 #include "HttpModule.h"
 #include "SentryLibrary.h"
+#include "SentrySettings.h"
 #include "SentrySpan.h"
 #include "SentrySubsystem.h"
 #include "SentryTransaction.h"
+#include "SentryTransactionContext.h"
 #include "Interfaces/IHttpResponse.h"
 
 void USentryTowerGameInstance::Init()
 {
 	Super::Init();
 
+	// Initialize Sentry with environment variable override for DSN
+	USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>();
+	if (SentrySubsystem)
+	{
+		FString EnvironmentDsn = FPlatformMisc::GetEnvironmentVariable(TEXT("SENTRY_DSN"));
+		if (!EnvironmentDsn.IsEmpty())
+		{
+			// Override DSN with environment variable
+			SentrySubsystem->InitializeWithSettings(FConfigureSettingsNativeDelegate::CreateLambda([EnvironmentDsn](USentrySettings* Settings)
+			{
+				Settings->Dsn = EnvironmentDsn;
+			}));
+		}
+		else
+		{
+			// Use default settings
+			SentrySubsystem->Initialize();
+		}
+	}
+
 	if (FParse::Param(FCommandLine::Get(), TEXT("NullRHI")))
 	{
 		// For CI simulation (no RHI available) copy pre-made screenshot to dest where Unreal SDK can pick it up during crash handling
 		const FString FakeScreenshotPath = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Resources"), TEXT("screenshot.png"));
 		
-		// Get the Sentry subsystem
-		USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>();
+		// Add screenshot attachment to Sentry
 		if (SentrySubsystem)
 		{
 			// Create the attachment
@@ -61,6 +82,7 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 	ProcessSpan->Finish();
 
+	USentrySpan* CheckoutSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("checkout_request"));
 	FString Domain = TEXT("https://aspnetcore.empower-plant.com");
 	FString Endpoint = TEXT("/checkout");
 	FString CheckoutURL = Domain + Endpoint;
@@ -76,6 +98,35 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 	HttpRequest->OnProcessRequestComplete().BindLambda([=](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
+		CheckoutSpan->Finish();
+
+		// Extract Sentry trace headers from HTTP response
+		USentryTransaction* UpstreamTransaction = CheckoutTransaction;
+		FString SentryTraceHeader = Response->GetHeader(TEXT("sentry-trace"));
+		TArray<FString> BaggageHeaders;
+		FString BaggageHeader = Response->GetHeader(TEXT("baggage"));
+		if (!BaggageHeader.IsEmpty())
+		{
+			BaggageHeaders.Add(BaggageHeader);
+		}
+
+		// Create transaction context from response headers if available
+		if (!SentryTraceHeader.IsEmpty())
+		{
+			USentrySubsystem* Sentry = GEngine->GetEngineSubsystem<USentrySubsystem>();
+			if (Sentry)
+			{
+				USentryTransactionContext* TransactionContext = Sentry->ContinueTrace(SentryTraceHeader, BaggageHeaders);
+				if (TransactionContext)
+				{
+					CheckoutTransaction->Finish();
+					UE_LOG(LogTemp, Log, TEXT("Extracted Sentry transaction context from response: %s"), *SentryTraceHeader);
+					UpstreamTransaction = Sentry->StartTransaction(TransactionContext);	
+				}
+			}
+		}
+
+		USentrySpan* ResponseSpan = UpstreamTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"));			
 		ensureMsgf(bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200, TEXT("Checkout HTTP request failed"));
 
 		if (bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200)
@@ -89,7 +140,8 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 			OnBuyComplete.ExecuteIfBound(false);
 		}
 
-		CheckoutTransaction->Finish();
+		ResponseSpan->Finish();
+		UpstreamTransaction->Finish();
 	});
 
 	HttpRequest->ProcessRequest();
