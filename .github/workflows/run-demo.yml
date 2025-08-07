@@ -2,7 +2,7 @@ name: run-demo
 
 on:
   schedule:
-    - cron: '0 */2 * * *' # every two hours
+    - cron: '*/50 * * * *' # every 50 minutes
   workflow_dispatch:
 
 jobs:
