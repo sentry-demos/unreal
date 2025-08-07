@@ -20,7 +20,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PAT_TOKEN }}
 
       - name: Start Docker container
         run: |
@@ -28,6 +28,10 @@ jobs:
             --name unreal `
             --volume "${{ github.workspace }}:C:\workspace" `
             --workdir C:\workspace `
+            --env SENTRY_DSN="${{ secrets.SENTRY_DSN }}" `
+            --env SENTRY_ORG="${{ secrets.SENTRY_ORG }}" `
+            --env SENTRY_PROJECT="${{ secrets.SENTRY_PROJECT }}" `
+            --env SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" `
             ghcr.io/getsentry/unreal-docker:${{ env.UE_VERSION }}
 
       - uses: actions/checkout@v4
