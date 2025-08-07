@@ -1,8 +1,8 @@
 name: run-demo
 
 on:
-  # schedule:
-  #   - cron: '0 */2 * * *' # every two hours
+  schedule:
+    - cron: '0 */2 * * *' # every two hours
   workflow_dispatch:
 
 jobs:
