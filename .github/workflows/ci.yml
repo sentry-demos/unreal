@@ -49,9 +49,9 @@ jobs:
             -package `
             -archive
 
-      - name: Upload SentryTower.exe
+      - name: Upload SentryTower
         uses: actions/upload-artifact@v4
         with:
           name: SentryTower
-          path: checkout/Builds/Windows/SentryTower.exe
+          path: checkout/Builds/Windows/
           retention-days: 90

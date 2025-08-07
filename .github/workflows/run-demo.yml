@@ -18,7 +18,8 @@ jobs:
           $runId = $runs.workflow_runs[0].id
           echo "run-id=$runId" >> $env:GITHUB_OUTPUT
 
-      - name: Download SentryTower.exe
+      - name: Download SentryTower
+        id: download
         uses: actions/download-artifact@v4
         with:
           name: SentryTower
@@ -26,11 +27,28 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.get-run.outputs.run-id }}
 
-      - name: Run simulation
+      - name: Run Simulation
         run: |
-          .\SentryTower.exe -Unattended -nullrhi --idle
-          if ($LASTEXITCODE -eq 0) {
+          $downloadPath = "${{ steps.download.outputs.download-path }}"
+          Write-Output "Download path: $downloadPath"
+          
+          # List files in download path
+          Write-Output "Files in download path:"
+          Get-ChildItem $downloadPath
+          
+          $exePath = Join-Path $downloadPath "SentryTower.exe"
+          if (!(Test-Path $exePath)) {
+            Write-Error "SentryTower.exe not found at: $exePath"
+            exit 1
+          }
+          
+          Write-Output "Running: $exePath -Unattended -nullrhi --idle"
+          $process = Start-Process -FilePath $exePath -ArgumentList "-Unattended", "-nullrhi", "--idle" -Wait -PassThru -NoNewWindow
+          $exitCode = $process.ExitCode
+          Write-Output "Process completed. Exit code: $exitCode"
+          
+          if ($exitCode -eq 0) {
             Write-Error "Expected non-zero exit code but got 0"
             exit 1
           }
-          Write-Output "Simulation completed with expected non-zero exit code: $LASTEXITCODE"
+          Write-Output "Simulation completed with expected non-zero exit code: $exitCode"
