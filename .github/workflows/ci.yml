@@ -28,6 +28,10 @@ jobs:
             --name unreal `
             --volume "${{ github.workspace }}:C:\workspace" `
             --workdir C:\workspace `
+            --env SENTRY_DSN="${{ secrets.SENTRY_DSN }}" `
+            --env SENTRY_ORG="${{ secrets.SENTRY_ORG }}" `
+            --env SENTRY_PROJECT="${{ secrets.SENTRY_PROJECT }}" `
+            --env SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" `
             ghcr.io/getsentry/unreal-docker:${{ env.UE_VERSION }}
 
       - uses: actions/checkout@v4
@@ -36,8 +40,6 @@ jobs:
           submodules: recursive
 
       - name: Build game
-        env:
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           docker exec unreal C:\UnrealEngine\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun `
             -project=C:\workspace\checkout\SentryTower.uproject `
@@ -50,21 +52,6 @@ jobs:
             -prereqss `
             -package `
             -archive
-
-      - name: Upload debug symbols to Sentry
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: |
-          docker exec unreal C:\workspace\checkout\Plugins\Sentry\Scripts\upload-debug-symbols-win.bat `
-            Win64 `
-            SentryTower `
-            Game `
-            Development `
-            C:\workspace\checkout `
-            C:\workspace\checkout\Plugins\Sentry
 
       - name: Upload SentryTower
         uses: actions/upload-artifact@v4
