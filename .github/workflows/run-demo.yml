@@ -43,9 +43,9 @@ jobs:
           }
           
           Write-Output "Running: $exePath -Unattended -nullrhi --idle"
-          & $exePath -Unattended -nullrhi --idle
-          $exitCode = $LASTEXITCODE
-          Write-Output "Exit code: $exitCode"
+          $process = Start-Process -FilePath $exePath -ArgumentList "-Unattended", "-nullrhi", "--idle" -Wait -PassThru -NoNewWindow
+          $exitCode = $process.ExitCode
+          Write-Output "Process completed. Exit code: $exitCode"
           
           if ($exitCode -eq 0) {
             Write-Error "Expected non-zero exit code but got 0"
