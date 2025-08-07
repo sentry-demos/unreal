@@ -3,6 +3,7 @@
 #include "SentryTowerGameInstance.h"
 
 #include "HttpModule.h"
+#include "SentryLibrary.h"
 #include "SentrySpan.h"
 #include "SentrySubsystem.h"
 #include "SentryTransaction.h"
@@ -16,9 +17,24 @@ void USentryTowerGameInstance::Init()
 	{
 		// For CI simulation (no RHI available) copy pre-made screenshot to dest where Unreal SDK can pick it up during crash handling
 		const FString FakeScreenshotPath = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Resources"), TEXT("screenshot.png"));
-		const FString ScreenshotExpectedPath = FPaths::Combine(FPaths::ProjectUserDir(), TEXT("screenshots"), TEXT("screenshot.png"));
+		
+		// Get the Sentry subsystem
+		USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>();
+		if (SentrySubsystem)
+		{
+			// Create the attachment
+			USentryAttachment* ScreenshotAttachment = USentryLibrary::CreateSentryAttachmentWithPath(
+				FakeScreenshotPath,
+				TEXT("screenshot.png"),
+				TEXT("image/png")
+			);
 
-		IFileManager::Get().Copy(*ScreenshotExpectedPath, *FakeScreenshotPath);
+			// Add to subsystem scope (will be included with all events)
+			if (ScreenshotAttachment)
+			{
+				SentrySubsystem->AddAttachment(ScreenshotAttachment);
+			}
+		}
 	}
 }
 
