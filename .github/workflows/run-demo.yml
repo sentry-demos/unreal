@@ -28,6 +28,8 @@ jobs:
           run-id: ${{ steps.get-run.outputs.run-id }}
 
       - name: Run Simulation
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           $downloadPath = "${{ steps.download.outputs.download-path }}"
           Write-Output "Download path: $downloadPath"
