@@ -100,38 +100,12 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	{
 		CheckoutSpan->Finish();
 
-		// Extract Sentry trace headers from HTTP response
-		USentryTransaction* UpstreamTransaction = CheckoutTransaction;
-		FString SentryTraceHeader = Response->GetHeader(TEXT("sentry-trace"));
-		TArray<FString> BaggageHeaders;
-		FString BaggageHeader = Response->GetHeader(TEXT("baggage"));
-		if (!BaggageHeader.IsEmpty())
-		{
-			BaggageHeaders.Add(BaggageHeader);
-		}
-
-		// Create transaction context from response headers if available
-		if (!SentryTraceHeader.IsEmpty())
-		{
-			USentrySubsystem* Sentry = GEngine->GetEngineSubsystem<USentrySubsystem>();
-			if (Sentry)
-			{
-				USentryTransactionContext* TransactionContext = Sentry->ContinueTrace(SentryTraceHeader, BaggageHeaders);
-				if (TransactionContext)
-				{
-					CheckoutTransaction->Finish();
-					UE_LOG(LogTemp, Log, TEXT("Extracted Sentry transaction context from response: %s"), *SentryTraceHeader);
-					UpstreamTransaction = Sentry->StartTransaction(TransactionContext);	
-				}
-			}
-		}
-
-		USentrySpan* ResponseSpan = UpstreamTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"));			
+		USentrySpan* ResponseSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"));			
 		ensureMsgf(bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200, TEXT("Checkout HTTP request failed"));
 
 		if (bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200)
 		{
-			UE_LOG(LogTemp, Log, TEXT("Checkout completed"));
+			UE_LOG(LogTemp, Error, TEXT("Checkout completed"));
 			OnBuyComplete.ExecuteIfBound(true);
 		}
 		else
@@ -141,7 +115,7 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 		}
 
 		ResponseSpan->Finish();
-		UpstreamTransaction->Finish();
+		CheckoutTransaction->Finish();
 	});
 
 	HttpRequest->ProcessRequest();
