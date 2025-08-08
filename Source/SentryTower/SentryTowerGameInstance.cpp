@@ -23,6 +23,7 @@ void USentryTowerGameInstance::Init()
 		if (!EnvironmentDsn.IsEmpty())
 		{
 			// Override DSN with environment variable
+			UE_LOG(LogTemp, Log, TEXT("Using SENTRY_DSN environment variable"));
 			SentrySubsystem->InitializeWithSettings(FConfigureSettingsNativeDelegate::CreateLambda([EnvironmentDsn](USentrySettings* Settings)
 			{
 				Settings->Dsn = EnvironmentDsn;
@@ -31,6 +32,7 @@ void USentryTowerGameInstance::Init()
 		else
 		{
 			// Use default settings
+			UE_LOG(LogTemp, Log, TEXT("SENTRY_DSN environment variable not set, using default settings"));
 			SentrySubsystem->Initialize();
 		}
 	}
@@ -105,7 +107,7 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 		if (bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200)
 		{
-			UE_LOG(LogTemp, Error, TEXT("Checkout completed"));
+			UE_LOG(LogTemp, Log, TEXT("Checkout completed"));
 			OnBuyComplete.ExecuteIfBound(true);
 		}
 		else
