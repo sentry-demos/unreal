@@ -8,6 +8,10 @@
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnBuyComplete, bool, IsSuccessfull);
 
+struct FPerformanceDropEvent;
+class USentryPerformance;
+class USentrySubsystem;
+
 UCLASS()
 class SENTRYTOWER_API USentryTowerGameInstance : public UGameInstance
 {
@@ -18,4 +22,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Meta = (AutoCreateRefTerm = "OnBuyComplete"))
 	void BuyUpgrade(const FOnBuyComplete& OnBuyComplete);
+
+	/** Force trigger a test performance drop event for testing */
+	UFUNCTION(BlueprintCallable, Category = "Testing")
+	void TriggerTestPerformanceDrop();
+
+	/** Called when a performance drop is detected */
+	UFUNCTION()
+	void OnPerformanceDropDetected(const FPerformanceDropEvent& DropEvent);
 };

@@ -21,6 +21,7 @@ class USentryBeforeBreadcrumbHandler;
 class USentryTransaction;
 class USentryTraceSampler;
 class USentryTransactionContext;
+class USentryPerformance;
 
 class ISentrySubsystem;
 class FSentryOutputDevice;
@@ -297,6 +298,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Sentry")
 	bool IsSupportedForCurrentSettings() const;
 
+	/** Gets the performance monitor object if performance monitoring is enabled. */
+	UFUNCTION(BlueprintPure, Category = "Sentry")
+	USentryPerformance* GetPerformanceMonitor() const { return PerformanceMonitor; }
+
 private:
 	/** Adds default context data for all events captured by Sentry SDK. */
 	void AddDefaultContext();
@@ -325,6 +330,12 @@ private:
 	/** Check whether the event capturing should be enabled for promoted builds only */
 	bool IsPromotedBuildsOnlyEnabled() const;
 
+	/** Initialize performance monitoring if enabled in settings */
+	void InitializePerformanceMonitoring();
+
+	/** Cleanup performance monitoring */
+	void DeinitializePerformanceMonitoring();
+
 	/** Add custom Sentry output device to intercept logs */
 	void ConfigureOutputDevice();
 
@@ -344,6 +355,9 @@ private:
 
 	UPROPERTY()
 	USentryTraceSampler* TraceSampler;
+
+	UPROPERTY()
+	USentryPerformance* PerformanceMonitor;
 
 	FDelegateHandle PreLoadMapDelegate;
 	FDelegateHandle PostLoadMapDelegate;

@@ -368,6 +368,26 @@ class SENTRY_API USentrySettings : public UObject
 		Meta = (DisplayName = "Crash Reporter Endpoint", ToolTip = "Endpoint that Unreal Engine Crah Reporter should use in order to upload crash data to Sentry."))
 	FString CrashReporterUrl;
 
+	UPROPERTY(Config, EditAnywhere, Category = "General|Performance Monitoring",
+		Meta = (DisplayName = "Enable performance monitoring", ToolTip = "Flag indicating whether to enable performance monitoring and frame drop detection.", EditCondition = "EnableTracing"))
+	bool EnablePerformanceMonitoring = true;
+
+	UPROPERTY(Config, EditAnywhere, Category = "General|Performance Monitoring",
+		Meta = (DisplayName = "FPS drop threshold", ToolTip = "FPS threshold below which performance drops are detected.", EditCondition = "EnableTracing && EnablePerformanceMonitoring", ClampMin = 1.0f))
+	float FPSDropThreshold = 30.0f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "General|Performance Monitoring",
+		Meta = (DisplayName = "Drop severity threshold", ToolTip = "Minimum drop severity (0.0-1.0) to trigger performance drop events.", EditCondition = "EnableTracing && EnablePerformanceMonitoring", ClampMin = 0.0f, ClampMax = 1.0f))
+	float DropSeverityThreshold = 0.3f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "General|Performance Monitoring",
+		Meta = (DisplayName = "Max history frames", ToolTip = "Maximum number of frames to keep in performance history.", EditCondition = "EnableTracing && EnablePerformanceMonitoring", ClampMin = 60))
+	int32 MaxHistoryFrames = 300;
+
+	UPROPERTY(Config, EditAnywhere, Category = "General|Performance Monitoring",
+		Meta = (DisplayName = "Performance check interval", ToolTip = "Minimum interval in seconds between performance drop checks.", EditCondition = "EnableTracing && EnablePerformanceMonitoring", ClampMin = 0.1f))
+	float PerformanceCheckInterval = 1.0f;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif

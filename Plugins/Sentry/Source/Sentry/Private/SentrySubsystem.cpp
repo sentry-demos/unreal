@@ -16,6 +16,7 @@
 #include "SentryTransactionContext.h"
 #include "SentryUser.h"
 #include "SentryUserFeedback.h"
+#include "SentryPerformance.h"
 
 #include "CoreGlobals.h"
 #include "Engine/World.h"
@@ -52,6 +53,8 @@ void USentrySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void USentrySubsystem::Deinitialize()
 {
 	DisableAutomaticBreadcrumbs();
+
+	DeinitializePerformanceMonitoring();
 
 	Close();
 
@@ -130,6 +133,8 @@ void USentrySubsystem::Initialize()
 
 	ConfigureOutputDevice();
 	ConfigureErrorOutputDevice();
+
+	InitializePerformanceMonitoring();
 
 	OnEnsureDelegate = FCoreDelegates::OnHandleSystemEnsure.AddWeakLambda(this, [this]()
 	{
@@ -814,5 +819,32 @@ void USentrySubsystem::ConfigureErrorOutputDevice()
 			SubsystemNativeImpl->HandleAssert();
 		});
 		GError = OutputDeviceError.Get();
+	}
+}
+
+void USentrySubsystem::InitializePerformanceMonitoring()
+{
+	const USentrySettings* Settings = FSentryModule::Get().GetSettings();
+	check(Settings);
+
+	// Only initialize if tracing and performance monitoring are enabled
+	if (Settings->EnableTracing && Settings->EnablePerformanceMonitoring)
+	{
+		PerformanceMonitor = NewObject<USentryPerformance>(this);
+		if (PerformanceMonitor)
+		{
+			PerformanceMonitor->Initialize();
+			UE_LOG(LogSentrySdk, Log, TEXT("Performance monitoring initialized"));
+		}
+	}
+}
+
+void USentrySubsystem::DeinitializePerformanceMonitoring()
+{
+	if (PerformanceMonitor)
+	{
+		PerformanceMonitor->Deinitialize();
+		PerformanceMonitor = nullptr;
+		UE_LOG(LogSentrySdk, Log, TEXT("Performance monitoring deinitialized"));
 	}
 }
