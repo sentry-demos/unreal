@@ -85,7 +85,7 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	ProcessSpan->Finish();
 
 	USentrySpan* CheckoutSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("checkout_request"));
-	FString Domain = TEXT("https://aspnetcore.empower-plant.com");
+	FString Domain = TEXT("https://flask.empower-plant.com");
 	FString Endpoint = TEXT("/checkout");
 	FString CheckoutURL = Domain + Endpoint;
 
