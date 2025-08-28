@@ -69,9 +69,7 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 	USentrySpan* ProcessSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_upgrade_data"));
 
-	TSharedPtr<FJsonObject> UpgradeDataJsonObject = MakeShareable(new FJsonObject());
-	UpgradeDataJsonObject->SetStringField(TEXT("UpgradeName"), TEXT("NewTower"));
-	UpgradeDataJsonObject->SetStringField(TEXT("PlayerEmail"), TEXT("player@sentry-tower.com"));
+	TSharedPtr<FJsonObject> UpgradeDataJsonObject = BuildCheckoutRequestJson();
 
 	FString JsonString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
@@ -96,6 +94,14 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	HttpRequest->SetVerb("POST");
 	HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 
+	FString TraceKey;
+	FString TraceValue;
+	CheckoutSpan->GetTrace(TraceKey, TraceValue);
+
+	UE_LOG(LogTemp, Log, TEXT("TraceValue - %s"), *TraceValue);
+	
+	HttpRequest->SetHeader(TraceKey, TraceValue);
+	
 	HttpRequest->SetContentAsString(JsonString);
 
 	HttpRequest->OnProcessRequestComplete().BindLambda([=](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
@@ -121,4 +127,51 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	});
 
 	HttpRequest->ProcessRequest();
+}
+
+TSharedPtr<FJsonObject> USentryTowerGameInstance::BuildCheckoutRequestJson()
+{
+	TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject());
+
+	// Build cart object
+	TSharedPtr<FJsonObject> CartObject = MakeShareable(new FJsonObject());
+
+	// Build items array
+	TArray<TSharedPtr<FJsonValue>> ItemsArray;
+	TSharedPtr<FJsonObject> ItemObject = MakeShareable(new FJsonObject());
+	ItemObject->SetStringField(TEXT("description"), TEXT("The mood ring for plants."));
+	ItemObject->SetStringField(TEXT("descriptionfull"), TEXT("This is an example of what you can do with just a few things, a little imagination and a happy dream in your heart. I'm a water fanatic. I love water. There's not a thing in the world wrong with washing your brush. Everybody needs a friend. Here we're limited by the time we have."));
+	ItemObject->SetNumberField(TEXT("id"), 3);
+	ItemObject->SetStringField(TEXT("img"), TEXT("https://storage.googleapis.com/application-monitoring/mood-planter.jpg"));
+	ItemObject->SetStringField(TEXT("imgcropped"), TEXT("https://storage.googleapis.com/application-monitoring/mood-planter-cropped.jpg"));
+	ItemObject->SetNumberField(TEXT("price"), 155);
+	ItemObject->SetArrayField(TEXT("reviews"), TArray<TSharedPtr<FJsonValue>>());
+	ItemObject->SetStringField(TEXT("title"), TEXT("Plant Mood"));
+	ItemsArray.Add(MakeShareable(new FJsonValueObject(ItemObject)));
+	CartObject->SetArrayField(TEXT("items"), ItemsArray);
+
+	// Build quantities object
+	TSharedPtr<FJsonObject> QuantitiesObject = MakeShareable(new FJsonObject());
+	QuantitiesObject->SetNumberField(TEXT("3"), 3);
+	CartObject->SetObjectField(TEXT("quantities"), QuantitiesObject);
+	CartObject->SetNumberField(TEXT("total"), 465);
+
+	// Build form object
+	TSharedPtr<FJsonObject> FormObject = MakeShareable(new FJsonObject());
+	FormObject->SetStringField(TEXT("address"), TEXT(""));
+	FormObject->SetStringField(TEXT("city"), TEXT(""));
+	FormObject->SetStringField(TEXT("country"), TEXT(""));
+	FormObject->SetStringField(TEXT("email"), TEXT("sampleEmail@email.com"));
+	FormObject->SetStringField(TEXT("firstName"), TEXT(""));
+	FormObject->SetStringField(TEXT("lastName"), TEXT(""));
+	FormObject->SetStringField(TEXT("state"), TEXT(""));
+	FormObject->SetStringField(TEXT("subscribe"), TEXT(""));
+	FormObject->SetStringField(TEXT("zipCode"), TEXT(""));
+
+	// Set all objects to main JSON
+	JsonObject->SetObjectField(TEXT("cart"), CartObject);
+	JsonObject->SetObjectField(TEXT("form"), FormObject);
+	JsonObject->SetStringField(TEXT("validate_inventory"), TEXT("true"));
+
+	return JsonObject;
 }
