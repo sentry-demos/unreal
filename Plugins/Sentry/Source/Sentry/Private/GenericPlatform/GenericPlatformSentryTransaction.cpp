@@ -28,6 +28,8 @@ TSharedPtr<ISentrySpan> FGenericPlatformSentryTransaction::StartChildSpan(const 
 {
 	if (sentry_span_t* nativeSpan = sentry_transaction_start_child(Transaction, TCHAR_TO_ANSI(*operation), TCHAR_TO_ANSI(*description)))
 	{
+		// TODO: Replace this hack with a proper span binding to the current scope
+		sentry_set_span(nativeSpan);
 		return MakeShareable(new FGenericPlatformSentrySpan(nativeSpan));
 	}
 	else

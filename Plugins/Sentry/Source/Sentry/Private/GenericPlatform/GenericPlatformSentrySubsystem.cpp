@@ -611,6 +611,9 @@ TSharedPtr<ISentryTransaction> FGenericPlatformSentrySubsystem::StartTransaction
 	{
 		if (sentry_transaction_t* nativeTransaction = sentry_transaction_start(platformTransactionContext->GetNativeObject(), sentry_value_new_null()))
 		{
+			// TODO: Replace this hack with a proper transaction binding to the current scope
+			sentry_set_transaction_object(nativeTransaction);
+			
 			return MakeShareable(new FGenericPlatformSentryTransaction(nativeTransaction));
 		}
 	}
