@@ -16,7 +16,7 @@ A Sentry-themed tower defence game written for Unreal Engine in C++/Blueprints f
 ## System requirements
 
 * Windows
-* Unreal Engine 5.5
+* Unreal Engine 5.6
 
 ## Third-party assets
 
