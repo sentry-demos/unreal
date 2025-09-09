@@ -25,6 +25,9 @@ A Sentry-themed tower defence game written for Unreal Engine in C++/Blueprints f
 * Once in the Editor you can click on the Green play icon (Arrow) to get the demo running
 <img width="872" height="360" alt="Screenshot 2025-09-09 at 15 06 52" src="https://github.com/user-attachments/assets/8d4f8e6b-e9c2-4fb5-817d-a5172054c20b" />
 
+## Features/Errors
+*  https://github.com/sentry-demos/unreal/blob/main/CONTRIBUTING.md
+
 
 ## Third-party assets
 
