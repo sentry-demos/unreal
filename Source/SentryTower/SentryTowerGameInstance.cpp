@@ -15,35 +15,13 @@ void USentryTowerGameInstance::Init()
 {
 	Super::Init();
 
-	// Initialize Sentry with environment variable override for DSN
-	USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>();
-	if (SentrySubsystem)
-	{
-		FString EnvironmentDsn = FPlatformMisc::GetEnvironmentVariable(TEXT("SENTRY_DSN"));
-		if (!EnvironmentDsn.IsEmpty())
-		{
-			// Override DSN with environment variable
-			UE_LOG(LogTemp, Log, TEXT("Using SENTRY_DSN environment variable"));
-			SentrySubsystem->InitializeWithSettings(FConfigureSettingsNativeDelegate::CreateLambda([EnvironmentDsn](USentrySettings* Settings)
-			{
-				Settings->Dsn = EnvironmentDsn;
-			}));
-		}
-		else
-		{
-			// Use default settings
-			UE_LOG(LogTemp, Log, TEXT("SENTRY_DSN environment variable not set, using default settings"));
-			SentrySubsystem->Initialize();
-		}
-	}
-
 	if (FParse::Param(FCommandLine::Get(), TEXT("NullRHI")))
 	{
 		// For CI simulation (no RHI available) copy pre-made screenshot to dest where Unreal SDK can pick it up during crash handling
 		const FString FakeScreenshotPath = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Resources"), TEXT("screenshot.png"));
 		
 		// Add screenshot attachment to Sentry
-		if (SentrySubsystem)
+		if (USentrySubsystem* SentrySubsystem = GEngine->GetEngineSubsystem<USentrySubsystem>())
 		{
 			// Create the attachment
 			USentryAttachment* ScreenshotAttachment = USentryLibrary::CreateSentryAttachmentWithPath(
