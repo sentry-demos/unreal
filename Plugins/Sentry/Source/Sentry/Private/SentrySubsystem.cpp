@@ -8,6 +8,7 @@
 #include "SentryDefines.h"
 #include "SentryErrorOutputDevice.h"
 #include "SentryEvent.h"
+#include "SentryFeedback.h"
 #include "SentryModule.h"
 #include "SentryOutputDevice.h"
 #include "SentrySettings.h"
@@ -15,7 +16,6 @@
 #include "SentryTransaction.h"
 #include "SentryTransactionContext.h"
 #include "SentryUser.h"
-#include "SentryUserFeedback.h"
 
 #include "CoreGlobals.h"
 #include "Engine/World.h"
@@ -29,8 +29,9 @@
 
 #include "Interface/SentrySubsystemInterface.h"
 
+#include "HAL/PlatformSentryFeedback.h"
+#include "HAL/PlatformSentryId.h"
 #include "HAL/PlatformSentrySubsystem.h"
-#include "HAL/PlatformSentryUserFeedback.h"
 
 void USentrySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -77,7 +78,7 @@ void USentrySubsystem::Initialize()
 	const USentrySettings* Settings = FSentryModule::Get().GetSettings();
 	check(Settings);
 
-	if (Settings->Dsn.IsEmpty())
+	if (Settings->GetEffectiveDsn().IsEmpty())
 	{
 		UE_LOG(LogSentrySdk, Warning, TEXT("Sentry requires minimal configuration for its initialization - please provide the DSN in plugin settings."));
 		return;
@@ -119,11 +120,8 @@ void USentrySubsystem::Initialize()
 	}
 
 	AddDefaultContext();
-
-#if PLATFORM_WINDOWS || PLATFORM_LINUX || PLATFORM_MAC
 	AddGpuContext();
 	AddDeviceContext();
-#endif
 
 	PromoteTags();
 	ConfigureBreadcrumbs();
@@ -341,32 +339,35 @@ FString USentrySubsystem::CaptureEventWithScope(USentryEvent* Event, const FConf
 	return SentryId->ToString();
 }
 
-void USentrySubsystem::CaptureUserFeedback(USentryUserFeedback* UserFeedback)
+void USentrySubsystem::CaptureFeedback(USentryFeedback* Feedback)
 {
 	check(SubsystemNativeImpl);
-	check(UserFeedback);
+	check(Feedback);
 
 	if (!SubsystemNativeImpl || !SubsystemNativeImpl->IsEnabled())
 	{
 		return;
 	}
 
-	SubsystemNativeImpl->CaptureUserFeedback(UserFeedback->GetNativeObject());
+	SubsystemNativeImpl->CaptureFeedback(Feedback->GetNativeObject());
 }
 
-void USentrySubsystem::CaptureUserFeedbackWithParams(const FString& EventId, const FString& Email, const FString& Comments, const FString& Name)
+void USentrySubsystem::CaptureFeedbackWithParams(const FString& Message, const FString& Name, const FString& Email, const FString& EventId)
 {
 	check(SubsystemNativeImpl);
-	check(!EventId.IsEmpty());
+	check(!Message.IsEmpty());
 
-	USentryUserFeedback* UserFeedback = USentryUserFeedback::Create(CreateSharedSentryUserFeedback(EventId));
-	check(UserFeedback);
+	USentryFeedback* Feedback = USentryFeedback::Create(MakeShareable(new FPlatformSentryFeedback(Message)));
+	check(Feedback);
 
-	UserFeedback->SetEmail(Email);
-	UserFeedback->SetComment(Comments);
-	UserFeedback->SetName(Name);
+	if (!Name.IsEmpty())
+		Feedback->SetName(Name);
+	if (!Email.IsEmpty())
+		Feedback->SetContactEmail(Email);
+	if (!EventId.IsEmpty())
+		Feedback->SetAssociatedEvent(EventId);
 
-	CaptureUserFeedback(UserFeedback);
+	CaptureFeedback(Feedback);
 }
 
 void USentrySubsystem::SetUser(USentryUser* User)
@@ -466,7 +467,43 @@ void USentrySubsystem::EndSession()
 	SubsystemNativeImpl->EndSession();
 }
 
-USentryTransaction* USentrySubsystem::StartTransaction(const FString& Name, const FString& Operation)
+void USentrySubsystem::GiveUserConsent()
+{
+	check(SubsystemNativeImpl);
+
+	if (!SubsystemNativeImpl || !SubsystemNativeImpl->IsEnabled())
+	{
+		return;
+	}
+
+	SubsystemNativeImpl->GiveUserConsent();
+}
+
+void USentrySubsystem::RevokeUserConsent()
+{
+	check(SubsystemNativeImpl);
+
+	if (!SubsystemNativeImpl || !SubsystemNativeImpl->IsEnabled())
+	{
+		return;
+	}
+
+	SubsystemNativeImpl->RevokeUserConsent();
+}
+
+EUserConsent USentrySubsystem::GetUserConsent() const
+{
+	check(SubsystemNativeImpl);
+
+	if (!SubsystemNativeImpl || !SubsystemNativeImpl->IsEnabled())
+	{
+		return EUserConsent::Unknown;
+	}
+
+	return SubsystemNativeImpl->GetUserConsent();
+}
+
+USentryTransaction* USentrySubsystem::StartTransaction(const FString& Name, const FString& Operation, bool BindToScope)
 {
 	check(SubsystemNativeImpl);
 
@@ -475,13 +512,13 @@ USentryTransaction* USentrySubsystem::StartTransaction(const FString& Name, cons
 		return nullptr;
 	}
 
-	TSharedPtr<ISentryTransaction> SentryTransaction = SubsystemNativeImpl->StartTransaction(Name, Operation);
+	TSharedPtr<ISentryTransaction> SentryTransaction = SubsystemNativeImpl->StartTransaction(Name, Operation, BindToScope);
 	check(SentryTransaction);
 
 	return USentryTransaction::Create(SentryTransaction);
 }
 
-USentryTransaction* USentrySubsystem::StartTransactionWithContext(USentryTransactionContext* Context)
+USentryTransaction* USentrySubsystem::StartTransactionWithContext(USentryTransactionContext* Context, bool BindToScope)
 {
 	check(SubsystemNativeImpl);
 	check(Context);
@@ -491,13 +528,13 @@ USentryTransaction* USentrySubsystem::StartTransactionWithContext(USentryTransac
 		return nullptr;
 	}
 
-	TSharedPtr<ISentryTransaction> SentryTransaction = SubsystemNativeImpl->StartTransactionWithContext(Context->GetNativeObject());
+	TSharedPtr<ISentryTransaction> SentryTransaction = SubsystemNativeImpl->StartTransactionWithContext(Context->GetNativeObject(), BindToScope);
 	check(SentryTransaction);
 
 	return USentryTransaction::Create(SentryTransaction);
 }
 
-USentryTransaction* USentrySubsystem::StartTransactionWithContextAndTimestamp(USentryTransactionContext* Context, int64 Timestamp)
+USentryTransaction* USentrySubsystem::StartTransactionWithContextAndTimestamp(USentryTransactionContext* Context, int64 Timestamp, bool BindToScope)
 {
 	check(SubsystemNativeImpl);
 	check(Context);
@@ -507,13 +544,13 @@ USentryTransaction* USentrySubsystem::StartTransactionWithContextAndTimestamp(US
 		return nullptr;
 	}
 
-	TSharedPtr<ISentryTransaction> SentryTransaction = SubsystemNativeImpl->StartTransactionWithContextAndTimestamp(Context->GetNativeObject(), Timestamp);
+	TSharedPtr<ISentryTransaction> SentryTransaction = SubsystemNativeImpl->StartTransactionWithContextAndTimestamp(Context->GetNativeObject(), Timestamp, BindToScope);
 	check(SentryTransaction);
 
 	return USentryTransaction::Create(SentryTransaction);
 }
 
-USentryTransaction* USentrySubsystem::StartTransactionWithContextAndOptions(USentryTransactionContext* Context, const TMap<FString, FString>& Options)
+USentryTransaction* USentrySubsystem::StartTransactionWithContextAndOptions(USentryTransactionContext* Context, const FSentryTransactionOptions& Options)
 {
 	check(SubsystemNativeImpl);
 	check(Context);
@@ -559,6 +596,11 @@ bool USentrySubsystem::IsSupportedForCurrentSettings() const
 	return true;
 }
 
+TSharedPtr<ISentrySubsystem> USentrySubsystem::GetNativeObject() const
+{
+	return SubsystemNativeImpl;
+}
+
 void USentrySubsystem::AddDefaultContext()
 {
 	check(SubsystemNativeImpl);
@@ -594,12 +636,15 @@ void USentrySubsystem::AddGpuContext()
 
 	FGPUDriverInfo GpuDriverInfo = FPlatformMisc::GetGPUDriverInfo(FPlatformMisc::GetPrimaryGPUBrand());
 
-	TMap<FString, FSentryVariant> GpuContext;
-	GpuContext.Add(TEXT("name"), GpuDriverInfo.DeviceDescription);
-	GpuContext.Add(TEXT("vendor_name"), GpuDriverInfo.ProviderName);
-	GpuContext.Add(TEXT("driver_version"), GpuDriverInfo.UserDriverVersion);
+	if (GpuDriverInfo.IsValid())
+	{
+		TMap<FString, FSentryVariant> GpuContext;
+		GpuContext.Add(TEXT("name"), GpuDriverInfo.DeviceDescription);
+		GpuContext.Add(TEXT("vendor_name"), GpuDriverInfo.ProviderName);
+		GpuContext.Add(TEXT("driver_version"), GpuDriverInfo.UserDriverVersion);
 
-	SubsystemNativeImpl->SetContext(TEXT("gpu"), GpuContext);
+		SubsystemNativeImpl->SetContext(TEXT("gpu"), GpuContext);
+	}
 }
 
 void USentrySubsystem::AddDeviceContext()

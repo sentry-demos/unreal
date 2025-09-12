@@ -24,7 +24,7 @@ public:
 	virtual TSharedPtr<ISentryId> CaptureEvent(TSharedPtr<ISentryEvent> event) override { return nullptr; }
 	virtual TSharedPtr<ISentryId> CaptureEventWithScope(TSharedPtr<ISentryEvent> event, const FSentryScopeDelegate& onScopeConfigure) override { return nullptr; }
 	virtual TSharedPtr<ISentryId> CaptureEnsure(const FString& type, const FString& message) override { return nullptr; }
-	virtual void CaptureUserFeedback(TSharedPtr<ISentryUserFeedback> userFeedback) override {}
+	virtual void CaptureFeedback(TSharedPtr<ISentryFeedback> feedback) override {}
 	virtual void SetUser(TSharedPtr<ISentryUser> user) override {}
 	virtual void RemoveUser() override {}
 	virtual void SetContext(const FString& key, const TMap<FString, FSentryVariant>& values) override {}
@@ -33,10 +33,13 @@ public:
 	virtual void SetLevel(ESentryLevel level) override {}
 	virtual void StartSession() override {}
 	virtual void EndSession() override {}
-	virtual TSharedPtr<ISentryTransaction> StartTransaction(const FString& name, const FString& operation) override { return nullptr; }
-	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context) override { return nullptr; }
-	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp) override { return nullptr; }
-	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContextAndOptions(TSharedPtr<ISentryTransactionContext> context, const TMap<FString, FString>& options) override { return nullptr; }
+	virtual void GiveUserConsent() override {}
+	virtual void RevokeUserConsent() override {}
+	virtual EUserConsent GetUserConsent() const override { return EUserConsent::Unknown; }
+	virtual TSharedPtr<ISentryTransaction> StartTransaction(const FString& name, const FString& operation, bool bindToScope) override { return nullptr; }
+	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context, bool bindToScope) override { return nullptr; }
+	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp, bool bindToScope) override { return nullptr; }
+	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContextAndOptions(TSharedPtr<ISentryTransactionContext> context, const FSentryTransactionOptions& options) override { return nullptr; }
 	virtual TSharedPtr<ISentryTransactionContext> ContinueTrace(const FString& sentryTrace, const TArray<FString>& baggageHeaders) override { return nullptr; }
 
 	virtual void HandleAssert() override {}

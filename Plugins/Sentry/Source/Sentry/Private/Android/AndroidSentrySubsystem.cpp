@@ -5,12 +5,12 @@
 #include "AndroidSentryAttachment.h"
 #include "AndroidSentryBreadcrumb.h"
 #include "AndroidSentryEvent.h"
+#include "AndroidSentryFeedback.h"
 #include "AndroidSentryId.h"
 #include "AndroidSentryTransaction.h"
 #include "AndroidSentryTransactionContext.h"
 #include "AndroidSentryTransactionOptions.h"
 #include "AndroidSentryUser.h"
-#include "AndroidSentryUserFeedback.h"
 
 #include "SentryBeforeSendHandler.h"
 #include "SentryDefines.h"
@@ -33,8 +33,8 @@ void FAndroidSentrySubsystem::InitWithSettings(const USentrySettings* settings, 
 {
 	TSharedPtr<FJsonObject> SettingsJson = MakeShareable(new FJsonObject);
 	SettingsJson->SetStringField(TEXT("dsn"), settings->Dsn);
-	SettingsJson->SetStringField(TEXT("release"), settings->OverrideReleaseName ? settings->Release : settings->GetFormattedReleaseName());
-	SettingsJson->SetStringField(TEXT("environment"), settings->Environment);
+	SettingsJson->SetStringField(TEXT("release"), settings->GetEffectiveRelease());
+	SettingsJson->SetStringField(TEXT("environment"), settings->GetEffectiveEnvironment());
 	SettingsJson->SetStringField(TEXT("dist"), settings->Dist);
 	SettingsJson->SetBoolField(TEXT("autoSessionTracking"), settings->EnableAutoSessionTracking);
 	SettingsJson->SetNumberField(TEXT("sessionTimeout"), settings->SessionTimeout);
@@ -200,12 +200,12 @@ TSharedPtr<ISentryId> FAndroidSentrySubsystem::CaptureEnsure(const FString& type
 	return MakeShareable(new FAndroidSentryId(*id));
 }
 
-void FAndroidSentrySubsystem::CaptureUserFeedback(TSharedPtr<ISentryUserFeedback> userFeedback)
+void FAndroidSentrySubsystem::CaptureFeedback(TSharedPtr<ISentryFeedback> feedback)
 {
-	TSharedPtr<FAndroidSentryUserFeedback> userFeedbackAndroid = StaticCastSharedPtr<FAndroidSentryUserFeedback>(userFeedback);
+	TSharedPtr<FAndroidSentryFeedback> feedbackAndroid = StaticCastSharedPtr<FAndroidSentryFeedback>(feedback);
 
-	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::Sentry, "captureUserFeedback", "(Lio/sentry/UserFeedback;)V",
-		userFeedbackAndroid->GetJObject());
+	FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::Sentry, "captureFeedback", "(Lio/sentry/protocol/Feedback;)Lio/sentry/protocol/SentryId;",
+		feedbackAndroid->GetJObject());
 }
 
 void FAndroidSentrySubsystem::SetUser(TSharedPtr<ISentryUser> user)
@@ -255,36 +255,61 @@ void FAndroidSentrySubsystem::EndSession()
 	FSentryJavaObjectWrapper::CallStaticMethod<void>(SentryJavaClasses::Sentry, "endSession", "()V", nullptr);
 }
 
-TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransaction(const FString& name, const FString& operation)
+void FAndroidSentrySubsystem::GiveUserConsent()
 {
-	auto transaction = FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::Sentry, "startTransaction", "(Ljava/lang/String;Ljava/lang/String;)Lio/sentry/ITransaction;",
-		*FSentryJavaObjectWrapper::GetJString(name), *FSentryJavaObjectWrapper::GetJString(operation));
+	// No-op; feature not currently implemented for this platform
+	UE_LOG(LogSentrySdk, Log, TEXT("GiveUserConsent is not supported on Android."));
+}
+
+void FAndroidSentrySubsystem::RevokeUserConsent()
+{
+	// No-op; feature not currently implemented for this platform
+	UE_LOG(LogSentrySdk, Log, TEXT("RevokeUserConsent is not supported on Android."));
+}
+
+EUserConsent FAndroidSentrySubsystem::GetUserConsent() const
+{
+	UE_LOG(LogSentrySdk, Log, TEXT("GetUserConsent is not supported on Android. Returning default `Unknown` value."));
+	return EUserConsent::Unknown;
+}
+
+TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransaction(const FString& name, const FString& operation, bool bindToScope)
+{
+	TSharedPtr<FAndroidSentryTransactionOptions> transactionOptionsAndroid = MakeShareable(new FAndroidSentryTransactionOptions());
+	transactionOptionsAndroid->SetBindToScope(bindToScope);
+
+	auto transaction = FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::Sentry, "startTransaction", "(Ljava/lang/String;Ljava/lang/String;Lio/sentry/TransactionOptions;)Lio/sentry/ITransaction;",
+		*FSentryJavaObjectWrapper::GetJString(name), *FSentryJavaObjectWrapper::GetJString(operation), transactionOptionsAndroid->GetJObject());
 
 	return MakeShareable(new FAndroidSentryTransaction(*transaction));
 }
 
-TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context)
-{
-	TSharedPtr<FAndroidSentryTransactionContext> transactionContextAndroid = StaticCastSharedPtr<FAndroidSentryTransactionContext>(context);
-
-	auto transaction = FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::Sentry, "startTransaction", "(Lio/sentry/TransactionContext;)Lio/sentry/ITransaction;",
-		transactionContextAndroid->GetJObject());
-
-	return MakeShareable(new FAndroidSentryTransaction(*transaction));
-}
-
-TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp)
-{
-	UE_LOG(LogSentrySdk, Log, TEXT("Setting transaction timestamp explicitly not supported on Android."));
-	return StartTransactionWithContext(context);
-}
-
-TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransactionWithContextAndOptions(TSharedPtr<ISentryTransactionContext> context, const TMap<FString, FString>& options)
+TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context, bool bindToScope)
 {
 	TSharedPtr<FAndroidSentryTransactionContext> transactionContextAndroid = StaticCastSharedPtr<FAndroidSentryTransactionContext>(context);
 
 	TSharedPtr<FAndroidSentryTransactionOptions> transactionOptionsAndroid = MakeShareable(new FAndroidSentryTransactionOptions());
-	transactionOptionsAndroid->SetCustomSamplingContext(options);
+	transactionOptionsAndroid->SetBindToScope(bindToScope);
+
+	auto transaction = FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::Sentry, "startTransaction", "(Lio/sentry/TransactionContext;Lio/sentry/TransactionOptions;)Lio/sentry/ITransaction;",
+		transactionContextAndroid->GetJObject(), transactionOptionsAndroid->GetJObject());
+
+	return MakeShareable(new FAndroidSentryTransaction(*transaction));
+}
+
+TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp, bool bindToScope)
+{
+	UE_LOG(LogSentrySdk, Log, TEXT("Setting transaction timestamp explicitly not supported on Android."));
+	return StartTransactionWithContext(context, bindToScope);
+}
+
+TSharedPtr<ISentryTransaction> FAndroidSentrySubsystem::StartTransactionWithContextAndOptions(TSharedPtr<ISentryTransactionContext> context, const FSentryTransactionOptions& options)
+{
+	TSharedPtr<FAndroidSentryTransactionContext> transactionContextAndroid = StaticCastSharedPtr<FAndroidSentryTransactionContext>(context);
+
+	TSharedPtr<FAndroidSentryTransactionOptions> transactionOptionsAndroid = MakeShareable(new FAndroidSentryTransactionOptions());
+	transactionOptionsAndroid->SetCustomSamplingContext(options.CustomSamplingContext);
+	transactionOptionsAndroid->SetBindToScope(options.BindToScope);
 
 	auto transaction = FSentryJavaObjectWrapper::CallStaticObjectMethod<jobject>(SentryJavaClasses::Sentry, "startTransaction", "(Lio/sentry/TransactionContext;Lio/sentry/TransactionOptions;)Lio/sentry/ITransaction;",
 		transactionContextAndroid->GetJObject(), transactionOptionsAndroid->GetJObject());
