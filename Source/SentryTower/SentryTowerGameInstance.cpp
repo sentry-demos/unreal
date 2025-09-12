@@ -65,9 +65,9 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 {
 	USentrySubsystem* Sentry = GEngine->GetEngineSubsystem<USentrySubsystem>();
 
-	USentryTransaction* CheckoutTransaction = Sentry->StartTransaction(TEXT("checkout"), TEXT("http.client"));
+	USentryTransaction* CheckoutTransaction = Sentry->StartTransaction(TEXT("checkout"), TEXT("http.client"), true);
 
-	USentrySpan* ProcessSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_upgrade_data"));
+	USentrySpan* ProcessSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_upgrade_data"), true);
 
 	TSharedPtr<FJsonObject> UpgradeDataJsonObject = BuildCheckoutRequestJson();
 
@@ -82,7 +82,7 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 	ProcessSpan->Finish();
 
-	USentrySpan* CheckoutSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("checkout_request"));
+	USentrySpan* CheckoutSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("checkout_request"), true);
 	FString Domain = TEXT("https://flask.empower-plant.com");
 	FString Endpoint = TEXT("/checkout");
 	FString CheckoutURL = Domain + Endpoint;
@@ -99,16 +99,16 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	CheckoutSpan->GetTrace(TraceKey, TraceValue);
 
 	UE_LOG(LogTemp, Log, TEXT("TraceValue - %s"), *TraceValue);
-	
+
 	HttpRequest->SetHeader(TraceKey, TraceValue);
-	
+
 	HttpRequest->SetContentAsString(JsonString);
 
 	HttpRequest->OnProcessRequestComplete().BindLambda([=](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
 		CheckoutSpan->Finish();
 
-		USentrySpan* ResponseSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"));			
+		USentrySpan* ResponseSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"), true);
 		ensureMsgf(bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200, TEXT("Checkout HTTP request failed"));
 
 		if (bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200)
