@@ -5,7 +5,9 @@
 #else
 #    import <SentryDefines.h>
 #endif
-#import SENTRY_HEADER(SentrySerializable)
+#if !SDK_V9
+#    import SENTRY_HEADER(SentrySerializable)
+#endif // SDK_V9
 #import SENTRY_HEADER(SentrySpanProtocol)
 
 @class SentryAttachment;
@@ -22,7 +24,10 @@ NS_ASSUME_NONNULL_BEGIN
  * https://docs.sentry.io/platforms/apple/enriching-events/scopes/#whats-a-scope-whats-a-hub
  */
 NS_SWIFT_NAME(Scope)
-@interface SentryScope : NSObject <SentrySerializable>
+@interface SentryScope : NSObject
+#if !SDK_V9
+                         <SentrySerializable>
+#endif // !SDK_V9
 
 /**
  * Returns current Span or Transaction.
@@ -115,10 +120,12 @@ NS_SWIFT_NAME(Scope)
  */
 - (void)clearBreadcrumbs;
 
+#if !SDK_V9
 /**
  * Serializes the Scope to JSON
  */
 - (NSDictionary<NSString *, id> *)serialize;
+#endif // !SDK_V9
 
 /**
  * Sets context values which will overwrite SentryEvent.context when event is
@@ -165,11 +172,6 @@ NS_SWIFT_NAME(Scope)
         "span. It is not atomic anymore and due to issues with memory safety in `NSBlock` it is "
         "now considered unsafe and deprecated. Use `span` instead.");
 #endif // !SDK_V9
-
-/**
- * Returns the current span.
- */
-- (id<SentrySpan> _Nullable)span;
 
 @end
 

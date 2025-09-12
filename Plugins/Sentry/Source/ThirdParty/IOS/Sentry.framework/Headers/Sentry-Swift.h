@@ -308,6 +308,19 @@ typedef unsigned int swift_uint4  __attribute__((__ext_vector_type__(4)));
 
 
 
+@class SentryDispatchQueueWrapper;
+@class SentryDefaultCurrentDateProvider;
+
+SWIFT_CLASS_NAMED("Dependencies")
+@interface SentryDependencies : NSObject
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryDispatchQueueWrapper * _Nonnull dispatchQueueWrapper;)
++ (SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper SWIFT_WARN_UNUSED_RESULT;
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryDefaultCurrentDateProvider * _Nonnull dateProvider;)
++ (SentryDefaultCurrentDateProvider * _Nonnull)dateProvider SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
 
 
 
@@ -319,9 +332,33 @@ SWIFT_CLASS("_TtC6Sentry19HTTPHeaderSanitizer")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+@class NSNumber;
+
+SWIFT_CLASS("_TtC6Sentry13LoadValidator")
+@interface LoadValidator : NSObject
++ (void)checkForDuplicatedSDKWithImageName:(NSString * _Nonnull)imageName imageAddress:(NSNumber * _Nonnull)imageAddress imageSize:(NSNumber * _Nonnull)imageSize dispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
 
 
 
+
+
+@class NSOperationQueue;
+@class NSNotification;
+@protocol NSObject;
+
+SWIFT_PROTOCOL("_TtP6Sentry33SentryNSNotificationCenterWrapper_")
+@protocol SentryNSNotificationCenterWrapper
+- (void)addObserver:(id _Nonnull)observer selector:(SEL _Nonnull)aSelector name:(NSNotificationName _Nullable)aName object:(id _Nullable)anObject;
+- (id <NSObject> _Nonnull)addObserverForName:(NSNotificationName _Nullable)name object:(id _Nullable)obj queue:(NSOperationQueue * _Nullable)queue usingBlock:(void (^ _Nonnull)(NSNotification * _Nonnull))block SWIFT_WARN_UNUSED_RESULT;
+- (void)removeObserver:(id _Nonnull)observer name:(NSNotificationName _Nullable)aName object:(id _Nullable)anObject;
+- (void)postNotification:(NSNotification * _Nonnull)notification;
+@end
+
+
+@interface NSNotificationCenter (SWIFT_EXTENSION(Sentry)) <SentryNSNotificationCenterWrapper>
+@end
 
 @class SentryExperimentalOptions;
 
@@ -444,29 +481,16 @@ SWIFT_CLASS("_TtC6Sentry26SentryDispatchQueueWrapper")
 
 SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @interface SentryEnabledFeaturesBuilder : NSObject
-+ (NSArray<NSString *> * _Nonnull)getEnabledFeaturesWithOptions:(SentryOptions * _Nullable)options SWIFT_WARN_UNUSED_RESULT;
++ (NSArray<NSString *> * _Nonnull)getEnabledFeaturesWithOptions:(SentryOptions * _Nullable)options SWIFT_WARN_UNUSED_RESULT SWIFT_DEPRECATED_MSG("This is only marked as deprecated because enableAppLaunchProfiling is marked as deprecated. Once that is removed this can be removed.");
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
 
-/// Subclass of SentryEvent so we can add the Decodable implementation via a Swift extension. We need
-/// this due to our mixed use of public Swift and ObjC classes. We could avoid this class by
-/// converting SentryReplayEvent back to ObjC, but we rather accept this tradeoff as we want to
-/// convert all public classes to Swift in the future. This does not need to be public, but was previously
-/// defined in objc and was public. In the next major version of the SDK we should make it <code>internal</code> and <code>final</code>
-/// and remove the <code>@objc</code> annotation.
-/// @note: We can’t add the extension for Decodable directly on SentryEvent, because we get an error
-/// in SentryReplayEvent: ‘required’ initializer ‘init(from:)’ must be provided by subclass of
-/// ‘Event’ Once we add the initializer with required convenience public init(from decoder: any
-/// Decoder) throws { fatalError(“init(from:) has not been implemented”)
-/// }
-/// we get the error initializer ‘init(from:)’ is declared in extension of ‘Event’ and cannot be
-/// overridden. Therefore, we add the Decodable implementation not on the Event, but to a subclass of
-/// the event.
 SWIFT_CLASS_NAMED("SentryEventDecodable")
 @interface SentryEventDecodable : SentryEvent
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
+
 
 @class NSData;
 
@@ -500,6 +524,8 @@ SWIFT_CLASS("_TtC6Sentry25SentryExperimentalOptions")
 /// experiment:
 /// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future major release.
 @property (nonatomic) BOOL enableUnhandledCPPExceptionsV2;
+/// Logs are considered beta.
+@property (nonatomic) BOOL enableLogs;
 - (void)validateOptions:(NSDictionary<NSString *, id> * _Nullable)options;
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
@@ -535,7 +561,6 @@ typedef SWIFT_ENUM(NSInteger, SentryFeedbackSource, open) {
 
 
 @interface SentryFeedback (SWIFT_EXTENSION(Sentry)) <SentrySerializable>
-- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 @end
 
 @class SentryAttachment;
@@ -544,6 +569,11 @@ typedef SWIFT_ENUM(NSInteger, SentryFeedbackSource, open) {
 /// note:
 /// Currently there is only a single attachment possible, for the screenshot, of which there can be only one.
 - (NSArray<SentryAttachment *> * _Nonnull)attachmentsForEnvelope SWIFT_WARN_UNUSED_RESULT;
+@end
+
+
+@interface SentryFeedback (SWIFT_EXTENSION(Sentry))
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 @end
 
 
@@ -603,6 +633,7 @@ SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryId * _
 @property (nonatomic, readonly) NSUInteger hash;
 @end
 
+
 typedef SWIFT_ENUM(NSUInteger, SentryLevel, open) {
   kSentryLevelNone SWIFT_COMPILE_NAME("none") = 0,
   kSentryLevelDebug SWIFT_COMPILE_NAME("debug") = 1,
@@ -616,10 +647,167 @@ typedef SWIFT_ENUM(NSUInteger, SentryLevel, open) {
 SWIFT_CLASS("_TtC6Sentry17SentryLevelHelper")
 @interface SentryLevelHelper : NSObject
 + (NSString * _Nonnull)nameForLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
-+ (enum SentryLevel)levelForName:(NSString * _Nonnull)name SWIFT_WARN_UNUSED_RESULT;
++ (enum SentryLevel)levelForName:(NSString * _Nullable)name SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+
+enum SentryStructuredLogLevel : NSInteger;
+@class SentryStructuredLogAttribute;
+
+/// A structured log entry that captures log data with associated attribute metadata.
+/// Use the <code>options.beforeSendLog</code> callback to modify or filter log data.
+SWIFT_CLASS("_TtC6Sentry9SentryLog")
+@interface SentryLog : NSObject
+/// The timestamp when the log event occurred
+@property (nonatomic, copy) NSDate * _Nonnull timestamp;
+/// The trace ID to associate this log with distributed tracing
+@property (nonatomic, strong) SentryId * _Nonnull traceId;
+/// The severity level of the log entry
+@property (nonatomic) enum SentryStructuredLogLevel level;
+/// The main log message content
+@property (nonatomic, copy) NSString * _Nonnull body;
+/// A dictionary of structured attributes added to the log entry
+@property (nonatomic, copy) NSDictionary<NSString *, SentryStructuredLogAttribute *> * _Nonnull attributes;
+/// Numeric representation of the severity level (Int)
+@property (nonatomic, strong) NSNumber * _Nullable severityNumber;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
+@interface SentryLog (SWIFT_EXTENSION(Sentry))
+@end
+
+/// Represents the severity level of a structured log entry.
+/// Log levels are ordered by severity from least (<code>trace</code>) to most severe (<code>fatal</code>).
+/// Each level corresponds to a numeric severity value following the OpenTelemetry specification.
+typedef SWIFT_ENUM_NAMED(NSInteger, SentryStructuredLogLevel, "Level", open) {
+  SentryStructuredLogLevelTrace = 0,
+  SentryStructuredLogLevelDebug = 1,
+  SentryStructuredLogLevelInfo = 2,
+  SentryStructuredLogLevelWarn = 3,
+  SentryStructuredLogLevelError = 4,
+  SentryStructuredLogLevelFatal = 5,
+};
+
+
+@interface SentryLog (SWIFT_EXTENSION(Sentry))
+@end
+
+
+/// A typed attribute that can be attached to structured log entries.
+/// <code>Attribute</code> provides a type-safe way to store structured data alongside log messages.
+/// Supports String, Bool, Int, and Double types.
+SWIFT_CLASS_NAMED("Attribute")
+@interface SentryStructuredLogAttribute : NSObject
+/// The type identifier for this attribute (“string”, “boolean”, “integer”, “double”)
+@property (nonatomic, readonly, copy) NSString * _Nonnull type;
+/// The actual value stored in this attribute
+@property (nonatomic, readonly) id _Nonnull value;
+- (nonnull instancetype)initWithString:(NSString * _Nonnull)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithBoolean:(BOOL)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithInteger:(NSInteger)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithDouble:(double)value OBJC_DESIGNATED_INITIALIZER;
+/// Creates a double attribute from a float value
+- (nonnull instancetype)initWithFloat:(float)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
+@class SentryClient;
+
+SWIFT_CLASS("_TtC6Sentry16SentryLogBatcher")
+@interface SentryLogBatcher : NSObject
+/// Initializes a new SentryLogBatcher.
+/// important:
+/// The <code>dispatchQueue</code> parameter MUST be a serial queue to ensure thread safety.
+/// Passing a concurrent queue will result in undefined behavior and potential data races.
+/// \param client The SentryClient to use for sending logs
+///
+/// \param flushTimeout The timeout interval after which buffered logs will be flushed
+///
+/// \param maxBufferSizeBytes The maximum buffer size in bytes before triggering an immediate flush
+///
+/// \param dispatchQueue A <em>serial</em> dispatch queue wrapper for thread-safe access to mutable state
+///
+- (nonnull instancetype)initWithClient:(SentryClient * _Nonnull)client flushTimeout:(NSTimeInterval)flushTimeout maxBufferSizeBytes:(NSInteger)maxBufferSizeBytes dispatchQueue:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueue OBJC_DESIGNATED_INITIALIZER;
+/// Convenience initializer with default flush timeout and buffer size.
+/// important:
+/// The <code>dispatchQueue</code> parameter MUST be a serial queue to ensure thread safety.
+/// Passing a concurrent queue will result in undefined behavior and potential data races.
+/// \param client The SentryClient to use for sending logs
+///
+/// \param dispatchQueue A <em>serial</em> dispatch queue wrapper for thread-safe access to mutable state
+///
+- (nonnull instancetype)initWithClient:(SentryClient * _Nonnull)client dispatchQueue:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueue;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
+/// <em>EXPERIMENTAL</em> - A structured logging API for Sentry.
+/// <code>SentryLogger</code> provides a structured logging interface that captures log entries
+/// and sends them to Sentry. Supports multiple log levels (trace, debug, info, warn,
+/// error, fatal) and allows attaching arbitrary attributes for enhanced context.
+/// <h2>Supported Attribute Types</h2>
+/// note:
+/// Sentry Logs is currently in Beta. See the <a href="https://docs.sentry.io/product/explore/logs/">Sentry Logs Documentation</a>.
+/// warning:
+/// This API is experimental and subject to change without notice.
+/// <ul>
+///   <li>
+///     <code>String</code>, <code>Bool</code>, <code>Int</code>, <code>Double</code>
+///   </li>
+///   <li>
+///     <code>Float</code> (converted to <code>Double</code>)
+///   </li>
+///   <li>
+///     Other types (converted to string)
+///   </li>
+/// </ul>
+/// <h2>Usage</h2>
+/// \code
+/// let logger = SentrySDK.logger
+/// logger.info("User logged in", attributes: ["userId": "12345"])
+/// logger.error("Payment failed", attributes: ["errorCode": 500])
+///
+/// // Structured string interpolation with automatic type detection
+/// logger.info("User \(userId) processed \(count) items with \(percentage)% success")
+/// logger.debug("Processing \(itemCount) items, active: \(isActive)")
+/// logger.warn("Retry attempt \(currentAttempt) of \(maxAttempts) failed")
+///
+/// \endcode
+SWIFT_CLASS("_TtC6Sentry12SentryLogger")
+@interface SentryLogger : NSObject
+/// Logs a trace-level message.
+- (void)trace:(NSString * _Nonnull)body;
+/// Logs a trace-level message with additional attributes.
+- (void)trace:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs a debug-level message.
+- (void)debug:(NSString * _Nonnull)body;
+/// Logs a debug-level message with additional attributes.
+- (void)debug:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs an info-level message.
+- (void)info:(NSString * _Nonnull)body;
+/// Logs an info-level message with additional attributes.
+- (void)info:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs a warning-level message.
+- (void)warn:(NSString * _Nonnull)body;
+/// Logs a warning-level message with additional attributes.
+- (void)warn:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs an error-level message.
+- (void)error:(NSString * _Nonnull)body;
+/// Logs an error-level message with additional attributes.
+- (void)error:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs a fatal-level message.
+- (void)fatal:(NSString * _Nonnull)body;
+/// Logs a fatal-level message with additional attributes.
+- (void)fatal:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
 
 @class SentryMXFrame;
 
@@ -691,6 +879,7 @@ SWIFT_CLASS("_TtC6Sentry24SentryMaskingPreviewView")
 - (void)didMoveToSuperview;
 - (nonnull instancetype)initWithFrame:(CGRect)frame SWIFT_UNAVAILABLE;
 @end
+
 
 
 
@@ -828,6 +1017,7 @@ SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
 
 SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
 @interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
+@property (nonatomic, readonly, copy) NSDictionary<NSString *, id> * _Nullable data;
 - (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
@@ -1092,6 +1282,340 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayType, open) {
 
 
 
+@protocol SentrySpan;
+@class SentryReplayApi;
+@class SentryScope;
+@class SentryTransactionContext;
+@class NSException;
+@class SentryUserFeedback;
+@class SentryFeedbackAPI;
+@class SentryUser;
+
+/// The main entry point for the Sentry SDK.
+/// We recommend using <code>start(configureOptions:)</code> to initialize Sentry.
+SWIFT_CLASS("_TtC6Sentry9SentrySDK")
+@interface SentrySDK : NSObject
+/// The current active transaction or span bound to the scope.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) id <SentrySpan> _Nullable span;)
++ (id <SentrySpan> _Nullable)span SWIFT_WARN_UNUSED_RESULT;
+/// Indicates whether the Sentry SDK is enabled.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly) BOOL isEnabled;)
++ (BOOL)isEnabled SWIFT_WARN_UNUSED_RESULT;
+/// API to control session replay
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryReplayApi * _Nonnull replay;)
++ (SentryReplayApi * _Nonnull)replay SWIFT_WARN_UNUSED_RESULT;
+/// API to access Sentry logs
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryLogger * _Nonnull logger;)
++ (SentryLogger * _Nonnull)logger SWIFT_WARN_UNUSED_RESULT;
+/// Inits and configures Sentry (<code>SentryHub</code>, <code>SentryClient</code>) and sets up all integrations. Make sure to
+/// set a valid DSN.
+/// note:
+/// Call this method on the main thread. When calling it from a background thread, the
+/// SDK starts on the main thread async.
++ (void)startWithOptions:(SentryOptions * _Nonnull)options;
+/// Inits and configures Sentry (<code>SentryHub</code>, <code>SentryClient</code>) and sets up all integrations. Make sure to
+/// set a valid DSN.
+/// note:
+/// Call this method on the main thread. When calling it from a background thread, the
+/// SDK starts on the main thread async.
++ (void)startWithConfigureOptions:(void (^ _Nonnull)(SentryOptions * _Nonnull))configureOptions;
+/// Captures a manually created event and sends it to Sentry.
+/// \param event The event to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureEvent:(SentryEvent * _Nonnull)event;
+/// Captures a manually created event and sends it to Sentry. Only the data in this scope object will
+/// be added to the event. The global scope will be ignored.
+/// \param event The event to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureEvent:(SentryEvent * _Nonnull)event withScope:(SentryScope * _Nonnull)scope;
+/// Captures a manually created event and sends it to Sentry. Maintains the global scope but mutates
+/// scope data for only this call.
+/// \param event The event to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureEvent:(SentryEvent * _Nonnull)event withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param name The transaction name.
+///
+/// \param operation Short code identifying the type of operation the span is measuring.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithName:(NSString * _Nonnull)name operation:(NSString * _Nonnull)operation;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param name The transaction name.
+///
+/// \param operation Short code identifying the type of operation the span is measuring.
+///
+/// \param bindToScope Indicates whether the SDK should bind the new transaction to the scope.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithName:(NSString * _Nonnull)name operation:(NSString * _Nonnull)operation bindToScope:(BOOL)bindToScope;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+/// \param bindToScope Indicates whether the SDK should bind the new transaction to the scope.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext bindToScope:(BOOL)bindToScope;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+/// \param bindToScope Indicates whether the SDK should bind the new transaction to the scope.
+///
+/// \param customSamplingContext Additional information about the sampling context.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext bindToScope:(BOOL)bindToScope customSamplingContext:(NSDictionary<NSString *, id> * _Nonnull)customSamplingContext;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+/// \param customSamplingContext Additional information about the sampling context.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext customSamplingContext:(NSDictionary<NSString *, id> * _Nonnull)customSamplingContext;
+/// Captures an error event and sends it to Sentry.
+/// \param error The error to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureError:(NSError * _Nonnull)error;
+/// Captures an error event and sends it to Sentry. Only the data in this scope object will be added
+/// to the event. The global scope will be ignored.
+/// \param error The error to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureError:(NSError * _Nonnull)error withScope:(SentryScope * _Nonnull)scope;
+/// Captures an error event and sends it to Sentry. Maintains the global scope but mutates scope data
+/// for only this call.
+/// \param error The error to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureError:(NSError * _Nonnull)error withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Captures an exception event and sends it to Sentry.
+/// \param exception The exception to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureException:(NSException * _Nonnull)exception;
+/// Captures an exception event and sends it to Sentry. Only the data in this scope object will be
+/// added to the event. The global scope will be ignored.
+/// \param exception The exception to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureException:(NSException * _Nonnull)exception withScope:(SentryScope * _Nonnull)scope;
+/// Captures an exception event and sends it to Sentry. Maintains the global scope but mutates scope
+/// data for only this call.
+/// \param exception The exception to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureException:(NSException * _Nonnull)exception withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Captures a message event and sends it to Sentry.
+/// \param message The message to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureMessage:(NSString * _Nonnull)message;
+/// Captures a message event and sends it to Sentry. Only the data in this scope object will be added
+/// to the event. The global scope will be ignored.
+/// \param message The message to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureMessage:(NSString * _Nonnull)message withScope:(SentryScope * _Nonnull)scope;
+/// Captures a message event and sends it to Sentry. Maintains the global scope but mutates scope
+/// data for only this call.
+/// \param message The message to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureMessage:(NSString * _Nonnull)message withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Captures user feedback that was manually gathered and sends it to Sentry.
+/// \param userFeedback The user feedback to send to Sentry.
+///
++ (void)captureUserFeedback:(SentryUserFeedback * _Nonnull)userFeedback SWIFT_DEPRECATED_MSG("Use SentrySDK.back or use or configure our new managed UX with SentryOptions.configureUserFeedback.");
+/// Captures user feedback that was manually gathered and sends it to Sentry.
+/// warning:
+/// This is an experimental feature and may still have bugs.
+/// note:
+/// If you’d prefer not to have to build the UI required to gather the feedback from the user,
+/// see <code>SentryOptions.configureUserFeedback</code> to customize a fully managed integration. See
+/// https://docs.sentry.io/platforms/apple/user-feedback/ for more information.
+/// \param feedback The feedback to send to Sentry.
+///
++ (void)captureFeedback:(SentryFeedback * _Nonnull)feedback;
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryFeedbackAPI * _Nonnull feedback SWIFT_AVAILABILITY(ios,introduced=13.0);)
++ (SentryFeedbackAPI * _Nonnull)feedback SWIFT_WARN_UNUSED_RESULT;
+/// Adds a <code>Breadcrumb</code> to the current <code>Scope</code> of the current <code>Hub</code>. If the total number of breadcrumbs
+/// exceeds the <code>SentryOptions.maxBreadcrumbs</code> the SDK removes the oldest breadcrumb.
+/// \param crumb The <code>Breadcrumb</code> to add to the current <code>Scope</code> of the current <code>Hub</code>.
+///
++ (void)addBreadcrumb:(SentryBreadcrumb * _Nonnull)crumb;
+/// Use this method to modify the current <code>Scope</code> of the current <code>Hub</code>. The SDK uses the <code>Scope</code> to attach
+/// contextual data to events.
+/// \param callback The callback for configuring the current <code>Scope</code> of the current <code>Hub</code>.
+///
++ (void)configureScope:(void (^ _Nonnull)(SentryScope * _Nonnull))callback;
+/// Checks if the last program execution terminated with a crash.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly) BOOL crashedLastRun;)
++ (BOOL)crashedLastRun SWIFT_WARN_UNUSED_RESULT;
+/// Checks if the SDK detected a start-up crash during SDK initialization.
+/// note:
+/// The SDK init waits synchronously for up to 5 seconds to flush out events if the app crashes
+/// within 2 seconds after the SDK init.
+///
+/// returns:
+/// true if the SDK detected a start-up crash and false if not.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly) BOOL detectedStartUpCrash;)
++ (BOOL)detectedStartUpCrash SWIFT_WARN_UNUSED_RESULT;
+/// Set <code>user</code> to the current <code>Scope</code> of the current <code>Hub</code>.
+/// note:
+/// You must start the SDK before calling this method, otherwise it doesn’t set the user.
+/// \param user The user to set to the current <code>Scope</code>.
+///
++ (void)setUser:(SentryUser * _Nullable)user;
+/// Starts a new <code>SentrySession</code>. If there’s a running <code>SentrySession</code>, it ends it before starting the
+/// new one. You can use this method in combination with <code>endSession</code> to manually track
+/// sessions. The SDK uses <code>SentrySession</code> to inform Sentry about release and project
+/// associated project health.
++ (void)startSession;
+/// Ends the current <code>SentrySession</code>. You can use this method in combination with <code>startSession</code> to
+/// manually track <code>SentrySessions</code>. The SDK uses <code>SentrySession</code> to inform Sentry about release and
+/// project associated project health.
++ (void)endSession;
+/// This forces a crash, useful to test the <code>SentryCrash</code> integration.
+/// note:
+/// The SDK can’t report a crash when a debugger is attached. Your application needs to run
+/// without a debugger attached to capture the crash and send it to Sentry the next time you launch
+/// your application.
++ (void)crash;
+/// Reports to the ongoing <code>UIViewController</code> transaction
+/// that the screen contents are fully loaded and displayed,
+/// which will create a new span.
+/// seealso:
+///
+/// https://docs.sentry.io/platforms/cocoa/performance/instrumentation/automatic-instrumentation/#time-to-full-display
++ (void)reportFullyDisplayed;
+/// Pauses sending detected app hangs to Sentry.
+/// This method doesn’t close the detection of app hangs. Instead, the app hang detection
+/// will ignore detected app hangs until you call <code>resumeAppHangTracking</code>.
++ (void)pauseAppHangTracking;
+/// Resumes sending detected app hangs to Sentry.
++ (void)resumeAppHangTracking;
+/// Waits synchronously for the SDK to flush out all queued and cached items for up to the specified
+/// timeout in seconds. If there is no internet connection, the function returns immediately. The SDK
+/// doesn’t dispose the client or the hub.
+/// note:
+/// This might take slightly longer than the specified timeout if there are many batched logs to capture.
+/// \param timeout The time to wait for the SDK to complete the flush.
+///
++ (void)flush:(NSTimeInterval)timeout;
+/// Closes the SDK, uninstalls all the integrations, and calls <code>flush</code> with
+/// <code>SentryOptions.shutdownTimeInterval</code>.
++ (void)close;
+/// Start a new continuous profiling session if one is not already running.
+/// warning:
+/// Continuous profiling mode is experimental and may still contain bugs.
+/// note:
+/// Unlike transaction-based profiling, continuous profiling does not take into account
+/// <code>SentryOptions.profilesSampleRate</code> or <code>SentryOptions.profilesSampler</code>. If either of those
+/// options are set, this method does nothing.
+/// note:
+/// Taking into account the above note, if <code>SentryOptions.configureProfiling</code> is not set,
+/// calls to this method will always start a profile if one is not already running. This includes app
+/// launch profiles configured with <code>SentryOptions.enableAppLaunchProfiling</code>.
+/// note:
+/// If neither <code>SentryOptions.profilesSampleRate</code> nor <code>SentryOptions.profilesSampler</code> are
+/// set, and <code>SentryOptions.configureProfiling</code> is set, this method does nothing if the profiling
+/// session is not sampled with respect to <code>SentryOptions.profileSessionSampleRate</code>, or if it is
+/// sampled but the profiler is already running.
+/// note:
+/// If neither <code>SentryOptions.profilesSampleRate</code> nor <code>SentryOptions.profilesSampler</code> are
+/// set, and <code>SentryOptions.configureProfiling</code> is set, this method does nothing if
+/// <code>SentryOptions.profileLifecycle</code> is set to <code>trace</code>. In this scenario, the profiler is
+/// automatically started and stopped depending on whether there is an active sampled span, so it is
+/// not permitted to manually start profiling.
+/// note:
+/// Profiling is automatically disabled if a thread sanitizer is attached.
+/// seealso:
+/// https://docs.sentry.io/platforms/apple/guides/ios/profiling/#continuous-profiling
++ (void)startProfiler;
+/// Stop a continuous profiling session if there is one ongoing.
+/// warning:
+/// Continuous profiling mode is experimental and may still contain bugs.
+/// note:
+/// Does nothing if <code>SentryOptions.profileLifecycle</code> is set to <code>trace</code>.
+/// note:
+/// Does not immediately stop the profiler. Profiling data is uploaded at regular timed
+/// intervals; when the current interval completes, then the profiler stops and the data gathered
+/// during that last interval is uploaded.
+/// note:
+/// If a new call to <code>startProfiler</code> that would start the profiler is made before the last
+/// interval completes, the profiler will continue running until another call to stop is made.
+/// note:
+/// Profiling is automatically disabled if a thread sanitizer is attached.
+/// seealso:
+/// https://docs.sentry.io/platforms/apple/guides/ios/profiling/#continuous-profiling
++ (void)stopProfiler;
+/// note:
+/// Conceptually internal but needs to be marked public with SPI for ObjC visibility
++ (void)clearLogger;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 
 /// A note on the thread safety:
 /// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
@@ -1130,7 +1654,6 @@ SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryUser;
 
 SWIFT_CLASS("_TtC6Sentry26SentryScopePersistentStore")
 @interface SentryScopePersistentStore : NSObject
@@ -1466,7 +1989,7 @@ SWIFT_CLASS("_TtC6Sentry31SentryUserFeedbackFormViewModel") SWIFT_AVAILABILITY(i
 /// An integration managing a workflow for end users to report feedback via Sentry.
 /// note:
 /// The default method to show the feedback form is via a floating widget placed in the bottom trailing corner of the screen. See the configuration classes for alternative options.
-SWIFT_CLASS("_TtC6Sentry35SentryUserFeedbackIntegrationDriver") SWIFT_AVAILABILITY(ios,introduced=13.0)
+SWIFT_CLASS("_TtC6Sentry35SentryUserFeedbackIntegrationDriver") SWIFT_AVAILABILITY(ios_app_extension,unavailable) SWIFT_AVAILABILITY(ios,introduced=13.0)
 @interface SentryUserFeedbackIntegrationDriver : NSObject
 - (nonnull instancetype)initWithConfiguration:(SentryUserFeedbackConfiguration * _Nonnull)configuration delegate:(id <SentryUserFeedbackIntegrationDriverDelegate> _Nonnull)delegate screenshotProvider:(SentryScreenshot * _Nonnull)screenshotProvider OBJC_DESIGNATED_INITIALIZER;
 - (void)showWidget;
@@ -1476,13 +1999,13 @@ SWIFT_CLASS("_TtC6Sentry35SentryUserFeedbackIntegrationDriver") SWIFT_AVAILABILI
 @end
 
 
-
 @class UIPresentationController;
 
-SWIFT_AVAILABILITY(ios,introduced=13.0)
+SWIFT_AVAILABILITY(ios_app_extension,unavailable) SWIFT_AVAILABILITY(ios,introduced=13.0)
 @interface SentryUserFeedbackIntegrationDriver (SWIFT_EXTENSION(Sentry)) <UIAdaptivePresentationControllerDelegate>
 - (void)presentationControllerDidDismiss:(UIPresentationController * _Nonnull)presentationController;
 @end
+
 
 
 
@@ -2028,6 +2551,19 @@ typedef unsigned int swift_uint4  __attribute__((__ext_vector_type__(4)));
 
 
 
+@class SentryDispatchQueueWrapper;
+@class SentryDefaultCurrentDateProvider;
+
+SWIFT_CLASS_NAMED("Dependencies")
+@interface SentryDependencies : NSObject
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryDispatchQueueWrapper * _Nonnull dispatchQueueWrapper;)
++ (SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper SWIFT_WARN_UNUSED_RESULT;
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryDefaultCurrentDateProvider * _Nonnull dateProvider;)
++ (SentryDefaultCurrentDateProvider * _Nonnull)dateProvider SWIFT_WARN_UNUSED_RESULT;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
+
 
 
 
@@ -2039,9 +2575,33 @@ SWIFT_CLASS("_TtC6Sentry19HTTPHeaderSanitizer")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+@class NSNumber;
+
+SWIFT_CLASS("_TtC6Sentry13LoadValidator")
+@interface LoadValidator : NSObject
++ (void)checkForDuplicatedSDKWithImageName:(NSString * _Nonnull)imageName imageAddress:(NSNumber * _Nonnull)imageAddress imageSize:(NSNumber * _Nonnull)imageSize dispatchQueueWrapper:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueueWrapper;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
 
 
 
+
+
+@class NSOperationQueue;
+@class NSNotification;
+@protocol NSObject;
+
+SWIFT_PROTOCOL("_TtP6Sentry33SentryNSNotificationCenterWrapper_")
+@protocol SentryNSNotificationCenterWrapper
+- (void)addObserver:(id _Nonnull)observer selector:(SEL _Nonnull)aSelector name:(NSNotificationName _Nullable)aName object:(id _Nullable)anObject;
+- (id <NSObject> _Nonnull)addObserverForName:(NSNotificationName _Nullable)name object:(id _Nullable)obj queue:(NSOperationQueue * _Nullable)queue usingBlock:(void (^ _Nonnull)(NSNotification * _Nonnull))block SWIFT_WARN_UNUSED_RESULT;
+- (void)removeObserver:(id _Nonnull)observer name:(NSNotificationName _Nullable)aName object:(id _Nullable)anObject;
+- (void)postNotification:(NSNotification * _Nonnull)notification;
+@end
+
+
+@interface NSNotificationCenter (SWIFT_EXTENSION(Sentry)) <SentryNSNotificationCenterWrapper>
+@end
 
 @class SentryExperimentalOptions;
 
@@ -2164,29 +2724,16 @@ SWIFT_CLASS("_TtC6Sentry26SentryDispatchQueueWrapper")
 
 SWIFT_CLASS("_TtC6Sentry28SentryEnabledFeaturesBuilder")
 @interface SentryEnabledFeaturesBuilder : NSObject
-+ (NSArray<NSString *> * _Nonnull)getEnabledFeaturesWithOptions:(SentryOptions * _Nullable)options SWIFT_WARN_UNUSED_RESULT;
++ (NSArray<NSString *> * _Nonnull)getEnabledFeaturesWithOptions:(SentryOptions * _Nullable)options SWIFT_WARN_UNUSED_RESULT SWIFT_DEPRECATED_MSG("This is only marked as deprecated because enableAppLaunchProfiling is marked as deprecated. Once that is removed this can be removed.");
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
 
-/// Subclass of SentryEvent so we can add the Decodable implementation via a Swift extension. We need
-/// this due to our mixed use of public Swift and ObjC classes. We could avoid this class by
-/// converting SentryReplayEvent back to ObjC, but we rather accept this tradeoff as we want to
-/// convert all public classes to Swift in the future. This does not need to be public, but was previously
-/// defined in objc and was public. In the next major version of the SDK we should make it <code>internal</code> and <code>final</code>
-/// and remove the <code>@objc</code> annotation.
-/// @note: We can’t add the extension for Decodable directly on SentryEvent, because we get an error
-/// in SentryReplayEvent: ‘required’ initializer ‘init(from:)’ must be provided by subclass of
-/// ‘Event’ Once we add the initializer with required convenience public init(from decoder: any
-/// Decoder) throws { fatalError(“init(from:) has not been implemented”)
-/// }
-/// we get the error initializer ‘init(from:)’ is declared in extension of ‘Event’ and cannot be
-/// overridden. Therefore, we add the Decodable implementation not on the Event, but to a subclass of
-/// the event.
 SWIFT_CLASS_NAMED("SentryEventDecodable")
 @interface SentryEventDecodable : SentryEvent
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
+
 
 @class NSData;
 
@@ -2220,6 +2767,8 @@ SWIFT_CLASS("_TtC6Sentry25SentryExperimentalOptions")
 /// experiment:
 /// This is an experimental feature and is therefore disabled by default. We’ll enable it by default in a future major release.
 @property (nonatomic) BOOL enableUnhandledCPPExceptionsV2;
+/// Logs are considered beta.
+@property (nonatomic) BOOL enableLogs;
 - (void)validateOptions:(NSDictionary<NSString *, id> * _Nullable)options;
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
@@ -2255,7 +2804,6 @@ typedef SWIFT_ENUM(NSInteger, SentryFeedbackSource, open) {
 
 
 @interface SentryFeedback (SWIFT_EXTENSION(Sentry)) <SentrySerializable>
-- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 @end
 
 @class SentryAttachment;
@@ -2264,6 +2812,11 @@ typedef SWIFT_ENUM(NSInteger, SentryFeedbackSource, open) {
 /// note:
 /// Currently there is only a single attachment possible, for the screenshot, of which there can be only one.
 - (NSArray<SentryAttachment *> * _Nonnull)attachmentsForEnvelope SWIFT_WARN_UNUSED_RESULT;
+@end
+
+
+@interface SentryFeedback (SWIFT_EXTENSION(Sentry))
+- (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 @end
 
 
@@ -2323,6 +2876,7 @@ SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryId * _
 @property (nonatomic, readonly) NSUInteger hash;
 @end
 
+
 typedef SWIFT_ENUM(NSUInteger, SentryLevel, open) {
   kSentryLevelNone SWIFT_COMPILE_NAME("none") = 0,
   kSentryLevelDebug SWIFT_COMPILE_NAME("debug") = 1,
@@ -2336,10 +2890,167 @@ typedef SWIFT_ENUM(NSUInteger, SentryLevel, open) {
 SWIFT_CLASS("_TtC6Sentry17SentryLevelHelper")
 @interface SentryLevelHelper : NSObject
 + (NSString * _Nonnull)nameForLevel:(enum SentryLevel)level SWIFT_WARN_UNUSED_RESULT;
-+ (enum SentryLevel)levelForName:(NSString * _Nonnull)name SWIFT_WARN_UNUSED_RESULT;
++ (enum SentryLevel)levelForName:(NSString * _Nullable)name SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
+
+enum SentryStructuredLogLevel : NSInteger;
+@class SentryStructuredLogAttribute;
+
+/// A structured log entry that captures log data with associated attribute metadata.
+/// Use the <code>options.beforeSendLog</code> callback to modify or filter log data.
+SWIFT_CLASS("_TtC6Sentry9SentryLog")
+@interface SentryLog : NSObject
+/// The timestamp when the log event occurred
+@property (nonatomic, copy) NSDate * _Nonnull timestamp;
+/// The trace ID to associate this log with distributed tracing
+@property (nonatomic, strong) SentryId * _Nonnull traceId;
+/// The severity level of the log entry
+@property (nonatomic) enum SentryStructuredLogLevel level;
+/// The main log message content
+@property (nonatomic, copy) NSString * _Nonnull body;
+/// A dictionary of structured attributes added to the log entry
+@property (nonatomic, copy) NSDictionary<NSString *, SentryStructuredLogAttribute *> * _Nonnull attributes;
+/// Numeric representation of the severity level (Int)
+@property (nonatomic, strong) NSNumber * _Nullable severityNumber;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
+@interface SentryLog (SWIFT_EXTENSION(Sentry))
+@end
+
+/// Represents the severity level of a structured log entry.
+/// Log levels are ordered by severity from least (<code>trace</code>) to most severe (<code>fatal</code>).
+/// Each level corresponds to a numeric severity value following the OpenTelemetry specification.
+typedef SWIFT_ENUM_NAMED(NSInteger, SentryStructuredLogLevel, "Level", open) {
+  SentryStructuredLogLevelTrace = 0,
+  SentryStructuredLogLevelDebug = 1,
+  SentryStructuredLogLevelInfo = 2,
+  SentryStructuredLogLevelWarn = 3,
+  SentryStructuredLogLevelError = 4,
+  SentryStructuredLogLevelFatal = 5,
+};
+
+
+@interface SentryLog (SWIFT_EXTENSION(Sentry))
+@end
+
+
+/// A typed attribute that can be attached to structured log entries.
+/// <code>Attribute</code> provides a type-safe way to store structured data alongside log messages.
+/// Supports String, Bool, Int, and Double types.
+SWIFT_CLASS_NAMED("Attribute")
+@interface SentryStructuredLogAttribute : NSObject
+/// The type identifier for this attribute (“string”, “boolean”, “integer”, “double”)
+@property (nonatomic, readonly, copy) NSString * _Nonnull type;
+/// The actual value stored in this attribute
+@property (nonatomic, readonly) id _Nonnull value;
+- (nonnull instancetype)initWithString:(NSString * _Nonnull)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithBoolean:(BOOL)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithInteger:(NSInteger)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)initWithDouble:(double)value OBJC_DESIGNATED_INITIALIZER;
+/// Creates a double attribute from a float value
+- (nonnull instancetype)initWithFloat:(float)value OBJC_DESIGNATED_INITIALIZER;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
+@class SentryClient;
+
+SWIFT_CLASS("_TtC6Sentry16SentryLogBatcher")
+@interface SentryLogBatcher : NSObject
+/// Initializes a new SentryLogBatcher.
+/// important:
+/// The <code>dispatchQueue</code> parameter MUST be a serial queue to ensure thread safety.
+/// Passing a concurrent queue will result in undefined behavior and potential data races.
+/// \param client The SentryClient to use for sending logs
+///
+/// \param flushTimeout The timeout interval after which buffered logs will be flushed
+///
+/// \param maxBufferSizeBytes The maximum buffer size in bytes before triggering an immediate flush
+///
+/// \param dispatchQueue A <em>serial</em> dispatch queue wrapper for thread-safe access to mutable state
+///
+- (nonnull instancetype)initWithClient:(SentryClient * _Nonnull)client flushTimeout:(NSTimeInterval)flushTimeout maxBufferSizeBytes:(NSInteger)maxBufferSizeBytes dispatchQueue:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueue OBJC_DESIGNATED_INITIALIZER;
+/// Convenience initializer with default flush timeout and buffer size.
+/// important:
+/// The <code>dispatchQueue</code> parameter MUST be a serial queue to ensure thread safety.
+/// Passing a concurrent queue will result in undefined behavior and potential data races.
+/// \param client The SentryClient to use for sending logs
+///
+/// \param dispatchQueue A <em>serial</em> dispatch queue wrapper for thread-safe access to mutable state
+///
+- (nonnull instancetype)initWithClient:(SentryClient * _Nonnull)client dispatchQueue:(SentryDispatchQueueWrapper * _Nonnull)dispatchQueue;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
+
+
+/// <em>EXPERIMENTAL</em> - A structured logging API for Sentry.
+/// <code>SentryLogger</code> provides a structured logging interface that captures log entries
+/// and sends them to Sentry. Supports multiple log levels (trace, debug, info, warn,
+/// error, fatal) and allows attaching arbitrary attributes for enhanced context.
+/// <h2>Supported Attribute Types</h2>
+/// note:
+/// Sentry Logs is currently in Beta. See the <a href="https://docs.sentry.io/product/explore/logs/">Sentry Logs Documentation</a>.
+/// warning:
+/// This API is experimental and subject to change without notice.
+/// <ul>
+///   <li>
+///     <code>String</code>, <code>Bool</code>, <code>Int</code>, <code>Double</code>
+///   </li>
+///   <li>
+///     <code>Float</code> (converted to <code>Double</code>)
+///   </li>
+///   <li>
+///     Other types (converted to string)
+///   </li>
+/// </ul>
+/// <h2>Usage</h2>
+/// \code
+/// let logger = SentrySDK.logger
+/// logger.info("User logged in", attributes: ["userId": "12345"])
+/// logger.error("Payment failed", attributes: ["errorCode": 500])
+///
+/// // Structured string interpolation with automatic type detection
+/// logger.info("User \(userId) processed \(count) items with \(percentage)% success")
+/// logger.debug("Processing \(itemCount) items, active: \(isActive)")
+/// logger.warn("Retry attempt \(currentAttempt) of \(maxAttempts) failed")
+///
+/// \endcode
+SWIFT_CLASS("_TtC6Sentry12SentryLogger")
+@interface SentryLogger : NSObject
+/// Logs a trace-level message.
+- (void)trace:(NSString * _Nonnull)body;
+/// Logs a trace-level message with additional attributes.
+- (void)trace:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs a debug-level message.
+- (void)debug:(NSString * _Nonnull)body;
+/// Logs a debug-level message with additional attributes.
+- (void)debug:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs an info-level message.
+- (void)info:(NSString * _Nonnull)body;
+/// Logs an info-level message with additional attributes.
+- (void)info:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs a warning-level message.
+- (void)warn:(NSString * _Nonnull)body;
+/// Logs a warning-level message with additional attributes.
+- (void)warn:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs an error-level message.
+- (void)error:(NSString * _Nonnull)body;
+/// Logs an error-level message with additional attributes.
+- (void)error:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+/// Logs a fatal-level message.
+- (void)fatal:(NSString * _Nonnull)body;
+/// Logs a fatal-level message with additional attributes.
+- (void)fatal:(NSString * _Nonnull)body attributes:(NSDictionary<NSString *, id> * _Nonnull)attributes;
+- (nonnull instancetype)init SWIFT_UNAVAILABLE;
++ (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
+@end
 
 @class SentryMXFrame;
 
@@ -2411,6 +3122,7 @@ SWIFT_CLASS("_TtC6Sentry24SentryMaskingPreviewView")
 - (void)didMoveToSuperview;
 - (nonnull instancetype)initWithFrame:(CGRect)frame SWIFT_UNAVAILABLE;
 @end
+
 
 
 
@@ -2548,6 +3260,7 @@ SWIFT_PROTOCOL_NAMED("SentryRRWebEventProtocol")
 
 SWIFT_CLASS("_TtC6Sentry16SentryRRWebEvent")
 @interface SentryRRWebEvent : NSObject <SentryRRWebEvent>
+@property (nonatomic, readonly, copy) NSDictionary<NSString *, id> * _Nullable data;
 - (NSDictionary<NSString *, id> * _Nonnull)serialize SWIFT_WARN_UNUSED_RESULT;
 - (nonnull instancetype)init SWIFT_UNAVAILABLE;
 + (nonnull instancetype)new SWIFT_UNAVAILABLE_MSG("-init is unavailable");
@@ -2812,6 +3525,340 @@ typedef SWIFT_ENUM(NSInteger, SentryReplayType, open) {
 
 
 
+@protocol SentrySpan;
+@class SentryReplayApi;
+@class SentryScope;
+@class SentryTransactionContext;
+@class NSException;
+@class SentryUserFeedback;
+@class SentryFeedbackAPI;
+@class SentryUser;
+
+/// The main entry point for the Sentry SDK.
+/// We recommend using <code>start(configureOptions:)</code> to initialize Sentry.
+SWIFT_CLASS("_TtC6Sentry9SentrySDK")
+@interface SentrySDK : NSObject
+/// The current active transaction or span bound to the scope.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) id <SentrySpan> _Nullable span;)
++ (id <SentrySpan> _Nullable)span SWIFT_WARN_UNUSED_RESULT;
+/// Indicates whether the Sentry SDK is enabled.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly) BOOL isEnabled;)
++ (BOOL)isEnabled SWIFT_WARN_UNUSED_RESULT;
+/// API to control session replay
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryReplayApi * _Nonnull replay;)
++ (SentryReplayApi * _Nonnull)replay SWIFT_WARN_UNUSED_RESULT;
+/// API to access Sentry logs
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryLogger * _Nonnull logger;)
++ (SentryLogger * _Nonnull)logger SWIFT_WARN_UNUSED_RESULT;
+/// Inits and configures Sentry (<code>SentryHub</code>, <code>SentryClient</code>) and sets up all integrations. Make sure to
+/// set a valid DSN.
+/// note:
+/// Call this method on the main thread. When calling it from a background thread, the
+/// SDK starts on the main thread async.
++ (void)startWithOptions:(SentryOptions * _Nonnull)options;
+/// Inits and configures Sentry (<code>SentryHub</code>, <code>SentryClient</code>) and sets up all integrations. Make sure to
+/// set a valid DSN.
+/// note:
+/// Call this method on the main thread. When calling it from a background thread, the
+/// SDK starts on the main thread async.
++ (void)startWithConfigureOptions:(void (^ _Nonnull)(SentryOptions * _Nonnull))configureOptions;
+/// Captures a manually created event and sends it to Sentry.
+/// \param event The event to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureEvent:(SentryEvent * _Nonnull)event;
+/// Captures a manually created event and sends it to Sentry. Only the data in this scope object will
+/// be added to the event. The global scope will be ignored.
+/// \param event The event to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureEvent:(SentryEvent * _Nonnull)event withScope:(SentryScope * _Nonnull)scope;
+/// Captures a manually created event and sends it to Sentry. Maintains the global scope but mutates
+/// scope data for only this call.
+/// \param event The event to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureEvent:(SentryEvent * _Nonnull)event withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param name The transaction name.
+///
+/// \param operation Short code identifying the type of operation the span is measuring.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithName:(NSString * _Nonnull)name operation:(NSString * _Nonnull)operation;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param name The transaction name.
+///
+/// \param operation Short code identifying the type of operation the span is measuring.
+///
+/// \param bindToScope Indicates whether the SDK should bind the new transaction to the scope.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithName:(NSString * _Nonnull)name operation:(NSString * _Nonnull)operation bindToScope:(BOOL)bindToScope;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+/// \param bindToScope Indicates whether the SDK should bind the new transaction to the scope.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext bindToScope:(BOOL)bindToScope;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+/// \param bindToScope Indicates whether the SDK should bind the new transaction to the scope.
+///
+/// \param customSamplingContext Additional information about the sampling context.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext bindToScope:(BOOL)bindToScope customSamplingContext:(NSDictionary<NSString *, id> * _Nonnull)customSamplingContext;
+/// Creates a transaction, binds it to the hub and returns the instance.
+/// \param transactionContext The transaction context.
+///
+/// \param customSamplingContext Additional information about the sampling context.
+///
+///
+/// returns:
+/// The created transaction.
++ (id <SentrySpan> _Nonnull)startTransactionWithContext:(SentryTransactionContext * _Nonnull)transactionContext customSamplingContext:(NSDictionary<NSString *, id> * _Nonnull)customSamplingContext;
+/// Captures an error event and sends it to Sentry.
+/// \param error The error to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureError:(NSError * _Nonnull)error;
+/// Captures an error event and sends it to Sentry. Only the data in this scope object will be added
+/// to the event. The global scope will be ignored.
+/// \param error The error to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureError:(NSError * _Nonnull)error withScope:(SentryScope * _Nonnull)scope;
+/// Captures an error event and sends it to Sentry. Maintains the global scope but mutates scope data
+/// for only this call.
+/// \param error The error to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureError:(NSError * _Nonnull)error withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Captures an exception event and sends it to Sentry.
+/// \param exception The exception to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureException:(NSException * _Nonnull)exception;
+/// Captures an exception event and sends it to Sentry. Only the data in this scope object will be
+/// added to the event. The global scope will be ignored.
+/// \param exception The exception to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureException:(NSException * _Nonnull)exception withScope:(SentryScope * _Nonnull)scope;
+/// Captures an exception event and sends it to Sentry. Maintains the global scope but mutates scope
+/// data for only this call.
+/// \param exception The exception to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureException:(NSException * _Nonnull)exception withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Captures a message event and sends it to Sentry.
+/// \param message The message to send to Sentry.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureMessage:(NSString * _Nonnull)message;
+/// Captures a message event and sends it to Sentry. Only the data in this scope object will be added
+/// to the event. The global scope will be ignored.
+/// \param message The message to send to Sentry.
+///
+/// \param scope The scope containing event metadata.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureMessage:(NSString * _Nonnull)message withScope:(SentryScope * _Nonnull)scope;
+/// Captures a message event and sends it to Sentry. Maintains the global scope but mutates scope
+/// data for only this call.
+/// \param message The message to send to Sentry.
+///
+/// \param block The block mutating the scope only for this call.
+///
+///
+/// returns:
+/// The <code>SentryId</code> of the event or <code>SentryId.empty</code> if the event is not sent.
++ (SentryId * _Nonnull)captureMessage:(NSString * _Nonnull)message withScopeBlock:(void (^ _Nonnull)(SentryScope * _Nonnull))block;
+/// Captures user feedback that was manually gathered and sends it to Sentry.
+/// \param userFeedback The user feedback to send to Sentry.
+///
++ (void)captureUserFeedback:(SentryUserFeedback * _Nonnull)userFeedback SWIFT_DEPRECATED_MSG("Use SentrySDK.back or use or configure our new managed UX with SentryOptions.configureUserFeedback.");
+/// Captures user feedback that was manually gathered and sends it to Sentry.
+/// warning:
+/// This is an experimental feature and may still have bugs.
+/// note:
+/// If you’d prefer not to have to build the UI required to gather the feedback from the user,
+/// see <code>SentryOptions.configureUserFeedback</code> to customize a fully managed integration. See
+/// https://docs.sentry.io/platforms/apple/user-feedback/ for more information.
+/// \param feedback The feedback to send to Sentry.
+///
++ (void)captureFeedback:(SentryFeedback * _Nonnull)feedback;
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly, strong) SentryFeedbackAPI * _Nonnull feedback SWIFT_AVAILABILITY(ios,introduced=13.0);)
++ (SentryFeedbackAPI * _Nonnull)feedback SWIFT_WARN_UNUSED_RESULT;
+/// Adds a <code>Breadcrumb</code> to the current <code>Scope</code> of the current <code>Hub</code>. If the total number of breadcrumbs
+/// exceeds the <code>SentryOptions.maxBreadcrumbs</code> the SDK removes the oldest breadcrumb.
+/// \param crumb The <code>Breadcrumb</code> to add to the current <code>Scope</code> of the current <code>Hub</code>.
+///
++ (void)addBreadcrumb:(SentryBreadcrumb * _Nonnull)crumb;
+/// Use this method to modify the current <code>Scope</code> of the current <code>Hub</code>. The SDK uses the <code>Scope</code> to attach
+/// contextual data to events.
+/// \param callback The callback for configuring the current <code>Scope</code> of the current <code>Hub</code>.
+///
++ (void)configureScope:(void (^ _Nonnull)(SentryScope * _Nonnull))callback;
+/// Checks if the last program execution terminated with a crash.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly) BOOL crashedLastRun;)
++ (BOOL)crashedLastRun SWIFT_WARN_UNUSED_RESULT;
+/// Checks if the SDK detected a start-up crash during SDK initialization.
+/// note:
+/// The SDK init waits synchronously for up to 5 seconds to flush out events if the app crashes
+/// within 2 seconds after the SDK init.
+///
+/// returns:
+/// true if the SDK detected a start-up crash and false if not.
+SWIFT_CLASS_PROPERTY(@property (nonatomic, class, readonly) BOOL detectedStartUpCrash;)
++ (BOOL)detectedStartUpCrash SWIFT_WARN_UNUSED_RESULT;
+/// Set <code>user</code> to the current <code>Scope</code> of the current <code>Hub</code>.
+/// note:
+/// You must start the SDK before calling this method, otherwise it doesn’t set the user.
+/// \param user The user to set to the current <code>Scope</code>.
+///
++ (void)setUser:(SentryUser * _Nullable)user;
+/// Starts a new <code>SentrySession</code>. If there’s a running <code>SentrySession</code>, it ends it before starting the
+/// new one. You can use this method in combination with <code>endSession</code> to manually track
+/// sessions. The SDK uses <code>SentrySession</code> to inform Sentry about release and project
+/// associated project health.
++ (void)startSession;
+/// Ends the current <code>SentrySession</code>. You can use this method in combination with <code>startSession</code> to
+/// manually track <code>SentrySessions</code>. The SDK uses <code>SentrySession</code> to inform Sentry about release and
+/// project associated project health.
++ (void)endSession;
+/// This forces a crash, useful to test the <code>SentryCrash</code> integration.
+/// note:
+/// The SDK can’t report a crash when a debugger is attached. Your application needs to run
+/// without a debugger attached to capture the crash and send it to Sentry the next time you launch
+/// your application.
++ (void)crash;
+/// Reports to the ongoing <code>UIViewController</code> transaction
+/// that the screen contents are fully loaded and displayed,
+/// which will create a new span.
+/// seealso:
+///
+/// https://docs.sentry.io/platforms/cocoa/performance/instrumentation/automatic-instrumentation/#time-to-full-display
++ (void)reportFullyDisplayed;
+/// Pauses sending detected app hangs to Sentry.
+/// This method doesn’t close the detection of app hangs. Instead, the app hang detection
+/// will ignore detected app hangs until you call <code>resumeAppHangTracking</code>.
++ (void)pauseAppHangTracking;
+/// Resumes sending detected app hangs to Sentry.
++ (void)resumeAppHangTracking;
+/// Waits synchronously for the SDK to flush out all queued and cached items for up to the specified
+/// timeout in seconds. If there is no internet connection, the function returns immediately. The SDK
+/// doesn’t dispose the client or the hub.
+/// note:
+/// This might take slightly longer than the specified timeout if there are many batched logs to capture.
+/// \param timeout The time to wait for the SDK to complete the flush.
+///
++ (void)flush:(NSTimeInterval)timeout;
+/// Closes the SDK, uninstalls all the integrations, and calls <code>flush</code> with
+/// <code>SentryOptions.shutdownTimeInterval</code>.
++ (void)close;
+/// Start a new continuous profiling session if one is not already running.
+/// warning:
+/// Continuous profiling mode is experimental and may still contain bugs.
+/// note:
+/// Unlike transaction-based profiling, continuous profiling does not take into account
+/// <code>SentryOptions.profilesSampleRate</code> or <code>SentryOptions.profilesSampler</code>. If either of those
+/// options are set, this method does nothing.
+/// note:
+/// Taking into account the above note, if <code>SentryOptions.configureProfiling</code> is not set,
+/// calls to this method will always start a profile if one is not already running. This includes app
+/// launch profiles configured with <code>SentryOptions.enableAppLaunchProfiling</code>.
+/// note:
+/// If neither <code>SentryOptions.profilesSampleRate</code> nor <code>SentryOptions.profilesSampler</code> are
+/// set, and <code>SentryOptions.configureProfiling</code> is set, this method does nothing if the profiling
+/// session is not sampled with respect to <code>SentryOptions.profileSessionSampleRate</code>, or if it is
+/// sampled but the profiler is already running.
+/// note:
+/// If neither <code>SentryOptions.profilesSampleRate</code> nor <code>SentryOptions.profilesSampler</code> are
+/// set, and <code>SentryOptions.configureProfiling</code> is set, this method does nothing if
+/// <code>SentryOptions.profileLifecycle</code> is set to <code>trace</code>. In this scenario, the profiler is
+/// automatically started and stopped depending on whether there is an active sampled span, so it is
+/// not permitted to manually start profiling.
+/// note:
+/// Profiling is automatically disabled if a thread sanitizer is attached.
+/// seealso:
+/// https://docs.sentry.io/platforms/apple/guides/ios/profiling/#continuous-profiling
++ (void)startProfiler;
+/// Stop a continuous profiling session if there is one ongoing.
+/// warning:
+/// Continuous profiling mode is experimental and may still contain bugs.
+/// note:
+/// Does nothing if <code>SentryOptions.profileLifecycle</code> is set to <code>trace</code>.
+/// note:
+/// Does not immediately stop the profiler. Profiling data is uploaded at regular timed
+/// intervals; when the current interval completes, then the profiler stops and the data gathered
+/// during that last interval is uploaded.
+/// note:
+/// If a new call to <code>startProfiler</code> that would start the profiler is made before the last
+/// interval completes, the profiler will continue running until another call to stop is made.
+/// note:
+/// Profiling is automatically disabled if a thread sanitizer is attached.
+/// seealso:
+/// https://docs.sentry.io/platforms/apple/guides/ios/profiling/#continuous-profiling
++ (void)stopProfiler;
+/// note:
+/// Conceptually internal but needs to be marked public with SPI for ObjC visibility
++ (void)clearLogger;
+- (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+@end
+
 
 /// A note on the thread safety:
 /// The methods configure and log don’t use synchronization mechanisms, meaning they aren’t strictly speaking thread-safe.
@@ -2850,7 +3897,6 @@ SWIFT_CLASS("_TtC6Sentry34SentrySRDefaultBreadcrumbConverter")
 - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
 @end
 
-@class SentryUser;
 
 SWIFT_CLASS("_TtC6Sentry26SentryScopePersistentStore")
 @interface SentryScopePersistentStore : NSObject
@@ -3186,7 +4232,7 @@ SWIFT_CLASS("_TtC6Sentry31SentryUserFeedbackFormViewModel") SWIFT_AVAILABILITY(i
 /// An integration managing a workflow for end users to report feedback via Sentry.
 /// note:
 /// The default method to show the feedback form is via a floating widget placed in the bottom trailing corner of the screen. See the configuration classes for alternative options.
-SWIFT_CLASS("_TtC6Sentry35SentryUserFeedbackIntegrationDriver") SWIFT_AVAILABILITY(ios,introduced=13.0)
+SWIFT_CLASS("_TtC6Sentry35SentryUserFeedbackIntegrationDriver") SWIFT_AVAILABILITY(ios_app_extension,unavailable) SWIFT_AVAILABILITY(ios,introduced=13.0)
 @interface SentryUserFeedbackIntegrationDriver : NSObject
 - (nonnull instancetype)initWithConfiguration:(SentryUserFeedbackConfiguration * _Nonnull)configuration delegate:(id <SentryUserFeedbackIntegrationDriverDelegate> _Nonnull)delegate screenshotProvider:(SentryScreenshot * _Nonnull)screenshotProvider OBJC_DESIGNATED_INITIALIZER;
 - (void)showWidget;
@@ -3196,13 +4242,13 @@ SWIFT_CLASS("_TtC6Sentry35SentryUserFeedbackIntegrationDriver") SWIFT_AVAILABILI
 @end
 
 
-
 @class UIPresentationController;
 
-SWIFT_AVAILABILITY(ios,introduced=13.0)
+SWIFT_AVAILABILITY(ios_app_extension,unavailable) SWIFT_AVAILABILITY(ios,introduced=13.0)
 @interface SentryUserFeedbackIntegrationDriver (SWIFT_EXTENSION(Sentry)) <UIAdaptivePresentationControllerDelegate>
 - (void)presentationControllerDidDismiss:(UIPresentationController * _Nonnull)presentationController;
 @end
+
 
 
 

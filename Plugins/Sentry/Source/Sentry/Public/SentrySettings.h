@@ -311,7 +311,7 @@ class SENTRY_API USentrySettings : public UObject
 	float TracesSampleRate;
 
 	UPROPERTY(Config, EditAnywhere, Category = "General|Performance Monitoring",
-		Meta = (DisplayName = "Traces sampler (for Android/Apple only)", ToolTip = "Custom handler for determining traces sample rate based on the sampling context.",
+		Meta = (DisplayName = "Traces sampler", ToolTip = "Custom handler for determining traces sample rate based on the sampling context.",
 			EditCondition = "EnableTracing && SamplingType == ESentryTracesSamplingType::TracesSampler", EditConditionHides))
 	TSubclassOf<USentryTraceSampler> TracesSampler;
 
@@ -368,6 +368,14 @@ class SENTRY_API USentrySettings : public UObject
 		Meta = (DisplayName = "Crash Reporter Endpoint", ToolTip = "Endpoint that Unreal Engine Crah Reporter should use in order to upload crash data to Sentry."))
 	FString CrashReporterUrl;
 
+	UPROPERTY(Config, EditAnywhere, Category = "General|Consent",
+		Meta = (DisplayName = "Require User Consent (for Windows/Linux only)", ToolTip = "True if user's consent is required before uploading crash data. Currently this feature is supported for Windows and Linux only."))
+	bool bRequireUserConsent;
+
+	UPROPERTY(Config, EditAnywhere, Category = "General|Consent",
+		Meta = (DisplayName = "Default User Consent Given (for Windows/Linux only)", ToolTip = "True if the default user consent value is 'given'; false if the default value should be 'revoked'. Currently this feature is supported for Windows and Linux only.", EditCondition = "bRequireUserConsent"))
+	bool bDefaultUserConsentGiven;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
@@ -376,17 +384,46 @@ class SENTRY_API USentrySettings : public UObject
 	 * Gets the effective DSN based on current execution context.
 	 *
 	 * @return Editor DSN when running in the editor and one is set; otherwise, falls back to the default DSN.
+	 * If neither is provided, the SDK will attempt to read it from the SENTRY_DSN environment variable.
 	 */
 	FString GetEffectiveDsn() const;
 
-	static FString GetFormattedReleaseName();
+	/**
+	 * Gets the effective environment based on current execution context.
+	 *
+	 * @return By default, the SDK uses the `Environment` value from the plugin settings if set.
+	 * If not, the SDK will attempt to read it from SENTRY_ENVIRONMENT environment variable.
+	 * If that is also not set, the environment is automatically derived from the current build configuration.
+	 */
+	FString GetEffectiveEnvironment() const;
+
+	/**
+	 * Gets the environment from the application's build configuration.
+	 *
+	 * @return Environment string based on build configuration (`Shipping` maps to `Release`, others map directly).
+	 */
+	FString GetEnvironmentFromBuildConfig() const;
+
+	/**
+	 * Gets the effective release name based on current execution context.
+	 *
+	 * @return By default, the SDK uses the `Release` value from the plugin settings if `OverrideReleaseName` flag is set.
+	 * If not, the SDK will attempt to read it from SENTRY_RELEASE environment variable.
+	 * If that is also not set, the release name is automatically derived from the current project name and version.
+	 */
+	FString GetEffectiveRelease() const;
+
+	/**
+	 * Gets the release name from the project settings.
+	 *
+	 * @return Release name derived from the current project name and version to match the format `<ProjectName>@<Version>`.
+	 */
+	FString GetReleaseFromProjectSettings() const;
 
 	bool IsDirty() const;
 	void ClearDirtyFlag();
 
 private:
-	FString GetDefaultEnvironmentName();
-
 	void LoadDebugSymbolsProperties();
 
 	bool bIsDirty;

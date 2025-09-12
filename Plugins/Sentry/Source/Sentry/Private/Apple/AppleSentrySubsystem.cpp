@@ -5,14 +5,13 @@
 #include "AppleSentryAttachment.h"
 #include "AppleSentryBreadcrumb.h"
 #include "AppleSentryEvent.h"
+#include "AppleSentryFeedback.h"
 #include "AppleSentryId.h"
 #include "AppleSentrySamplingContext.h"
 #include "AppleSentryScope.h"
 #include "AppleSentryTransaction.h"
 #include "AppleSentryTransactionContext.h"
 #include "AppleSentryUser.h"
-#include "AppleSentryUserFeedback.h"
-#include "Convenience/AppleSentryMacro.h"
 
 #include "SentryBeforeBreadcrumbHandler.h"
 #include "SentryBeforeSendHandler.h"
@@ -26,6 +25,7 @@
 #include "Infrastructure/AppleSentryConverters.h"
 
 #include "Convenience/AppleSentryInclude.h"
+#include "Convenience/AppleSentryMacro.h"
 
 #include "Utils/SentryFileUtils.h"
 #include "Utils/SentryLogUtils.h"
@@ -51,11 +51,11 @@ void FAppleSentrySubsystem::InitWithSettings(const USentrySettings* settings, US
 	dispatch_async(dispatch_get_main_queue(), ^{
 		[SENTRY_APPLE_CLASS(SentrySDK) startWithConfigureOptions:^(SentryOptions* options) {
 			options.dsn = settings->GetEffectiveDsn().GetNSString();
-			options.environment = settings->Environment.GetNSString();
+			options.releaseName = settings->GetEffectiveRelease().GetNSString();
+			options.environment = settings->GetEffectiveEnvironment().GetNSString();
 			options.dist = settings->Dist.GetNSString();
 			options.enableAutoSessionTracking = settings->EnableAutoSessionTracking;
 			options.sessionTrackingIntervalMillis = settings->SessionTimeout;
-			options.releaseName = settings->OverrideReleaseName ? settings->Release.GetNSString() : settings->GetFormattedReleaseName().GetNSString();
 			options.attachStacktrace = settings->AttachStacktrace;
 			options.debug = settings->Debug;
 			options.sampleRate = [NSNumber numberWithFloat:settings->SampleRate];
@@ -290,11 +290,11 @@ TSharedPtr<ISentryId> FAppleSentrySubsystem::CaptureEnsure(const FString& type, 
 	return id;
 }
 
-void FAppleSentrySubsystem::CaptureUserFeedback(TSharedPtr<ISentryUserFeedback> userFeedback)
+void FAppleSentrySubsystem::CaptureFeedback(TSharedPtr<ISentryFeedback> feedback)
 {
-	TSharedPtr<FAppleSentryUserFeedback> userFeedbackApple = StaticCastSharedPtr<FAppleSentryUserFeedback>(userFeedback);
+	TSharedPtr<FAppleSentryFeedback> feedbackApple = StaticCastSharedPtr<FAppleSentryFeedback>(feedback);
 
-	[SENTRY_APPLE_CLASS(SentrySDK) captureFeedback:FAppleSentryUserFeedback::CreateSentryFeedback(userFeedbackApple)];
+	[SENTRY_APPLE_CLASS(SentrySDK) captureFeedback:FAppleSentryFeedback::CreateSentryFeedback(feedbackApple)];
 }
 
 void FAppleSentrySubsystem::SetUser(TSharedPtr<ISentryUser> user)
@@ -347,34 +347,53 @@ void FAppleSentrySubsystem::EndSession()
 	[SENTRY_APPLE_CLASS(SentrySDK) endSession];
 }
 
-TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransaction(const FString& name, const FString& operation)
+void FAppleSentrySubsystem::GiveUserConsent()
 {
-	id<SentrySpan> transaction = [SENTRY_APPLE_CLASS(SentrySDK) startTransactionWithName:name.GetNSString() operation:operation.GetNSString()];
+	// No-op; feature not currently implemented for this platform
+	UE_LOG(LogSentrySdk, Log, TEXT("GiveUserConsent is not supported on Mac/iOS."));
+}
+
+void FAppleSentrySubsystem::RevokeUserConsent()
+{
+	// No-op; feature not currently implemented for this platform
+	UE_LOG(LogSentrySdk, Log, TEXT("RevokeUserConsent is not supported on Mac/iOS."));
+}
+
+EUserConsent FAppleSentrySubsystem::GetUserConsent() const
+{
+	UE_LOG(LogSentrySdk, Log, TEXT("GetUserConsent is not supported on Mac/iOS. Returning default `Unknown` value."));
+	return EUserConsent::Unknown;
+}
+
+TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransaction(const FString& name, const FString& operation, bool bindToScope)
+{
+	id<SentrySpan> transaction = [SENTRY_APPLE_CLASS(SentrySDK) startTransactionWithName:name.GetNSString() operation:operation.GetNSString() bindToScope:bindToScope];
 
 	return MakeShareable(new FAppleSentryTransaction(transaction));
 }
 
-TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context)
+TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context, bool bindToScope)
 {
 	TSharedPtr<FAppleSentryTransactionContext> transactionContextIOS = StaticCastSharedPtr<FAppleSentryTransactionContext>(context);
 
-	id<SentrySpan> transaction = [SENTRY_APPLE_CLASS(SentrySDK) startTransactionWithContext:transactionContextIOS->GetNativeObject()];
+	id<SentrySpan> transaction = [SENTRY_APPLE_CLASS(SentrySDK) startTransactionWithContext:transactionContextIOS->GetNativeObject() bindToScope:bindToScope];
 
 	return MakeShareable(new FAppleSentryTransaction(transaction));
 }
 
-TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp)
+TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp, bool bindToScope)
 {
 	UE_LOG(LogSentrySdk, Log, TEXT("Setting transaction timestamp explicitly not supported on Mac/iOS."));
-	return StartTransactionWithContext(context);
+	return StartTransactionWithContext(context, bindToScope);
 }
 
-TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransactionWithContextAndOptions(TSharedPtr<ISentryTransactionContext> context, const TMap<FString, FString>& options)
+TSharedPtr<ISentryTransaction> FAppleSentrySubsystem::StartTransactionWithContextAndOptions(TSharedPtr<ISentryTransactionContext> context, const FSentryTransactionOptions& options)
 {
 	TSharedPtr<FAppleSentryTransactionContext> transactionContextIOS = StaticCastSharedPtr<FAppleSentryTransactionContext>(context);
 
 	id<SentrySpan> transaction = [SENTRY_APPLE_CLASS(SentrySDK) startTransactionWithContext:transactionContextIOS->GetNativeObject()
-																	  customSamplingContext:FAppleSentryConverters::StringMapToNative(options)];
+																				bindToScope:options.BindToScope
+																	  customSamplingContext:FAppleSentryConverters::VariantMapToNative(options.CustomSamplingContext)];
 
 	return MakeShareable(new FAppleSentryTransaction(transaction));
 }
@@ -395,11 +414,7 @@ TSharedPtr<ISentryTransactionContext> FAppleSentrySubsystem::ContinueTrace(const
 		sampleDecision = traceParts[2].Equals(TEXT("1")) ? kSentrySampleDecisionYes : kSentrySampleDecisionNo;
 	}
 
-#if PLATFORM_MAC
-	SentryId* traceId = [[SENTRY_APPLE_CLASS(_TtC6Sentry8SentryId) alloc] initWithUUIDString:traceParts[0].GetNSString()];
-#elif PLATFORM_IOS
 	SentryId* traceId = [[SENTRY_APPLE_CLASS(SentryId) alloc] initWithUUIDString:traceParts[0].GetNSString()];
-#endif
 
 	SentryTransactionContext* transactionContext = [[SENTRY_APPLE_CLASS(SentryTransactionContext) alloc] initWithName:@"<unlabeled transaction>" operation:@"default"
 																											  traceId:traceId
