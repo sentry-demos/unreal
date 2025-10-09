@@ -75,3 +75,8 @@ All captured crash events should have the following attachments:
 ## Self-playing mode
 
 Launch the game with the `--idle` parameter to enable self-play mode (useful for running tests in a CI environment). In this mode, user input is not required. The game automatically responds to certain events (e.g., level-up, game over) by randomly selecting from a set of predefined actions.
+
+## Console Controls
+
+- To open the in-game shop, press the Y button on Xbox or the △ (triangle) button on PS5
+- To open the game menu, press the B button on Xbox or the ○ (circle) button on PS5
