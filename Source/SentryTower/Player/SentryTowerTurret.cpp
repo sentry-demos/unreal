@@ -55,19 +55,32 @@ void ASentryTowerTurret::BeginPlay()
 
 void ASentryTowerTurret::Shoot(AActor* TargetActor, const FVector& TargetLocation)
 {
-	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (!ProjectileType)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Turret %s has no projectile type set, skipping shoot"), *GetName());
+		return;
+	}
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
 	if (CurrentTime - LastShotTime < AttackCooldown)
 	{
 		return;
 	}
 
-	LastShotTime = CurrentTime;
+	const FVector SpawnLocation = ProjectileSocket->GetComponentLocation();
+	const FRotator SpawnRotation = TurretWeapon->GetComponentRotation();
 
-	FVector SpawnLocation = ProjectileSocket->GetComponentLocation();
-	FRotator SpawnRotation = TurretWeapon->GetComponentRotation();
-
-	auto Projectile = 
+	auto Projectile =
 		Cast<ASentryTowerProjectile>(GetWorld()->SpawnActor(ProjectileType, &SpawnLocation, &SpawnRotation));
+
+	if (!Projectile)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Turret %s failed to spawn projectile of type %s"),
+			*GetName(), *ProjectileType->GetName());
+		return;
+	}
+
+	LastShotTime = CurrentTime;
 
 	Projectile->TargetToFollow = TargetActor;
 	Projectile->TargetStationary = TargetLocation;
