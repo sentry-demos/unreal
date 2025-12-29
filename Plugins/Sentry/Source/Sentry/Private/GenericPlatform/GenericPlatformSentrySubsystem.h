@@ -47,6 +47,7 @@ public:
 	virtual void GiveUserConsent() override;
 	virtual void RevokeUserConsent() override;
 	virtual EUserConsent GetUserConsent() const override;
+	virtual bool IsUserConsentRequired() const override;
 	virtual TSharedPtr<ISentryTransaction> StartTransaction(const FString& name, const FString& operation, bool bindToScope) override;
 	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context, bool bindToScope) override;
 	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp, bool bindToScope) override;
@@ -97,12 +98,6 @@ private:
 	static sentry_value_t HandleBeforeLog(sentry_value_t log, void* closure);
 	static sentry_value_t HandleOnCrash(const sentry_ucontext_t* uctx, sentry_value_t event, void* closure);
 	static double HandleTraceSampling(const sentry_transaction_context_t* transaction_ctx, sentry_value_t custom_sampling_ctx, const int* parent_sampled, void* closure);
-
-	/**
-	 * Checks if it's safe to run callback handlers that instantiate UObjects.
-	 * Returns false if during post-load or garbage collection to prevent deadlocks.
-	 */
-	bool IsCallbackSafeToRun() const;
 
 	USentryBeforeSendHandler* beforeSend;
 	USentryBeforeBreadcrumbHandler* beforeBreadcrumb;
