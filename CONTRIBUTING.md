@@ -52,7 +52,7 @@ void HeavyComputeLoop(uint3 DispatchThreadId : SV_DispatchThreadID, uint GroupIn
 }
 ```
 
-In order to be able to capture GPU crashes game has to be built with Unreal Engine version that addops this [change](https://github.com/EpicGames/UnrealEngine/pull/12648).
+In order to be able to capture GPU crashes, the game has to be built with Unreal Engine version that addops this [change](https://github.com/EpicGames/UnrealEngine/pull/12648) (starting from UE 5.7 it is available out of the box).
 
 ### HTTP request error
 
