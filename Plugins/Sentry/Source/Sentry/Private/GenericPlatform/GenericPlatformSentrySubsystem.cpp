@@ -26,8 +26,8 @@
 #include "SentrySubsystem.h"
 #include "SentryTraceSampler.h"
 
+#include "Utils/SentryCallbackUtils.h"
 #include "Utils/SentryFileUtils.h"
-#include "Utils/SentryLogUtils.h"
 #include "Utils/SentryScreenshotUtils.h"
 
 #include "Infrastructure/GenericPlatformSentryConverters.h"
@@ -40,10 +40,7 @@
 #include "HAL/ExceptionHandling.h"
 #include "HAL/FileManager.h"
 #include "Misc/CoreDelegates.h"
-#include "Misc/EngineVersionComparison.h"
 #include "Misc/Paths.h"
-#include "Misc/ScopeLock.h"
-#include "UObject/GarbageCollection.h"
 #include "UObject/UObjectThreadContext.h"
 
 extern CORE_API bool GIsGPUCrashed;
@@ -55,15 +52,7 @@ static void PrintVerboseLog(sentry_level_t level, const char* message, va_list a
 	char buffer[512];
 	vsnprintf(buffer, 512, message, args);
 
-	FString MessageBuf = FString(buffer);
-
-#if !NO_LOGGING
-	const FName SentryCategoryName(LogSentrySdk.GetCategoryName());
-#else
-	const FName SentryCategoryName(TEXT("LogSentrySdk"));
-#endif
-
-	GLog->CategorizedLogf(SentryCategoryName, FGenericPlatformSentryConverters::SentryLevelToLogVerbosity(level), TEXT("%s"), *MessageBuf);
+	GLog->CategorizedLogf(TEXT("LogSentryInternal"), FGenericPlatformSentryConverters::SentryLevelToLogVerbosity(level), TEXT("%s"), StringCast<TCHAR>(buffer).Get());
 }
 
 /* static */ sentry_value_t FGenericPlatformSentrySubsystem::HandleBeforeSend(sentry_value_t event, void* hint, void* closure)
@@ -124,24 +113,6 @@ static void PrintVerboseLog(sentry_level_t level, const char* message, va_list a
 	return log;
 }
 
-bool FGenericPlatformSentrySubsystem::IsCallbackSafeToRun() const
-{
-	if (FUObjectThreadContext::Get().IsRoutingPostLoad)
-	{
-		return false;
-	}
-
-	if (IsGarbageCollecting())
-	{
-		// If event is captured during garbage collection we can't instantiate UObjects safely or obtain a GC lock
-		// since it will cause a deadlock (see https://github.com/getsentry/sentry-unreal/issues/850).
-		// In this case event will be reported without calling a `beforeSend` handler.
-		return false;
-	}
-
-	return true;
-}
-
 sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeSend(sentry_value_t event, void* hint, void* closure, bool isCrash)
 {
 	if (!closure || this != closure)
@@ -156,7 +127,7 @@ sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeSend(sentry_value_t even
 		return event;
 	}
 
-	if (!IsCallbackSafeToRun())
+	if (!SentryCallbackUtils::IsCallbackSafeToRun())
 	{
 		return event;
 	}
@@ -185,7 +156,7 @@ sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeBreadcrumb(sentry_value_
 		return breadcrumb;
 	}
 
-	if (!IsCallbackSafeToRun())
+	if (!SentryCallbackUtils::IsCallbackSafeToRun())
 	{
 		return breadcrumb;
 	}
@@ -211,7 +182,7 @@ sentry_value_t FGenericPlatformSentrySubsystem::OnBeforeLog(sentry_value_t log, 
 		return log;
 	}
 
-	if (!IsCallbackSafeToRun())
+	if (!SentryCallbackUtils::IsCallbackSafeToRun())
 	{
 		return log;
 	}
@@ -250,7 +221,7 @@ double FGenericPlatformSentrySubsystem::OnTraceSampling(const sentry_transaction
 		return parent_sampled != nullptr ? *parent_sampled : 0.0;
 	}
 
-	if (!IsCallbackSafeToRun())
+	if (!SentryCallbackUtils::IsCallbackSafeToRun())
 	{
 		return parent_sampled != nullptr ? *parent_sampled : 0.0;
 	}
@@ -396,7 +367,7 @@ void FGenericPlatformSentrySubsystem::InitWithSettings(const USentrySettings* se
 	sentry_options_set_on_crash(options, HandleOnCrash, this);
 	sentry_options_set_shutdown_timeout(options, 3000);
 	sentry_options_set_crashpad_wait_for_upload(options, settings->CrashpadWaitForUpload);
-	sentry_options_set_logger_enabled_when_crashed(options, false);
+	sentry_options_set_logger_enabled_when_crashed(options, settings->EnableOnCrashLogging);
 	sentry_options_set_enable_logs(options, settings->EnableStructuredLogging);
 
 	if (settings->bRequireUserConsent)
@@ -768,6 +739,11 @@ EUserConsent FGenericPlatformSentrySubsystem::GetUserConsent() const
 	default:
 		return EUserConsent::Unknown;
 	}
+}
+
+bool FGenericPlatformSentrySubsystem::IsUserConsentRequired() const
+{
+	return sentry_user_consent_is_required() == 1;
 }
 
 TSharedPtr<ISentryTransaction> FGenericPlatformSentrySubsystem::StartTransaction(const FString& name, const FString& operation, bool bindToScope)

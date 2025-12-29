@@ -38,6 +38,7 @@ public:
 	virtual void GiveUserConsent() override;
 	virtual void RevokeUserConsent() override;
 	virtual EUserConsent GetUserConsent() const override;
+	virtual bool IsUserConsentRequired() const override;
 	virtual TSharedPtr<ISentryTransaction> StartTransaction(const FString& name, const FString& operation, bool bindToScope) override;
 	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContext(TSharedPtr<ISentryTransactionContext> context, bool bindToScope) override;
 	virtual TSharedPtr<ISentryTransaction> StartTransactionWithContextAndTimestamp(TSharedPtr<ISentryTransactionContext> context, int64 timestamp, bool bindToScope) override;
@@ -45,6 +46,13 @@ public:
 	virtual TSharedPtr<ISentryTransactionContext> ContinueTrace(const FString& sentryTrace, const TArray<FString>& baggageHeaders) override;
 
 	virtual void HandleAssert() override;
+
+	FString TryCaptureScreenshot() const;
+
+private:
+	bool isScreenshotAttachmentEnabled = false;
+
+	FDelegateHandle OnHandleSystemErrorDelegateHandle;
 };
 
 typedef FAndroidSentrySubsystem FPlatformSentrySubsystem;
