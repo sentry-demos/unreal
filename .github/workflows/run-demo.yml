@@ -1,9 +1,9 @@
 name: run-demo
 
 on:
-  schedule:
-    - cron: '*/50 * * * *' # every 50 minutes
-  workflow_dispatch:
+  schedule: # Run every 50 minutes
+    - cron: '*/50 * * * *'
+  workflow_dispatch: # Manual trigger
 
 jobs:
   run:
