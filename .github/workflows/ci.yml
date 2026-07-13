@@ -1,61 +1,19 @@
-name: build-and-release-demo
+name: Build Demo
 
 on:
-  # schedule:
-  #    - cron: '0 */3 * * *' # every three hours
+  schedule:
+    - cron: '0 6 * * *' # daily
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  UE_VERSION: 5.7
-
 jobs:
-  build:
-    name: Build
-    runs-on: windows-2022
+  build-windows:
+    uses: ./.github/workflows/build-windows.yml
+    secrets: inherit
 
-    steps:
-      - name: Log in to GitHub package registry
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.GH_USERNAME }}
-          password: ${{ secrets.PAT_TOKEN }}
+  build-linux:
+    uses: ./.github/workflows/build-linux.yml
+    secrets: inherit
 
-      - name: Start Docker container
-        run: |
-          docker run -td `
-            --name unreal `
-            --volume "${{ github.workspace }}:C:\workspace" `
-            --workdir C:\workspace `
-            --env SENTRY_DSN="${{ secrets.SENTRY_DSN }}" `
-            --env SENTRY_ORG="${{ secrets.SENTRY_ORG }}" `
-            --env SENTRY_PROJECT="${{ secrets.SENTRY_PROJECT }}" `
-            --env SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" `
-            ghcr.io/getsentry/unreal-docker:${{ env.UE_VERSION }}
-
-      - uses: actions/checkout@v4
-        with:
-          path: checkout
-          submodules: recursive
-
-      - name: Build game
-        run: |
-          docker exec unreal C:\UnrealEngine\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun `
-            -project=C:\workspace\checkout\SentryTower.uproject `
-            -archivedirectory=C:\workspace\checkout\Builds `
-            -platform=Win64 `
-            -nop4 `
-            -cook `
-            -build `
-            -stage `
-            -prereqss `
-            -package `
-            -archive
-
-      - name: Upload SentryTower
-        uses: actions/upload-artifact@v4
-        with:
-          name: SentryTower
-          path: checkout/Builds/Windows/
-          retention-days: 90
+  build-android:
+    uses: ./.github/workflows/build-android.yml
+    secrets: inherit

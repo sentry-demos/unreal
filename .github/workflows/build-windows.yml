@@ -1,0 +1,59 @@
+name: Build Demo (Windows)
+
+on:
+  workflow_call:
+
+env:
+  REGISTRY: ghcr.io
+  UE_VERSION: 5.7
+
+jobs:
+  build:
+    name: Build Windows
+    runs-on: windows-2022
+
+    steps:
+      - name: Log in to GitHub package registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.PAT_TOKEN }}
+
+      - name: Start Docker container
+        run: |
+          docker run -td `
+            --name unreal `
+            --volume "${{ github.workspace }}:C:\workspace" `
+            --workdir C:\workspace `
+            --env SENTRY_DSN="${{ secrets.SENTRY_DSN }}" `
+            --env SENTRY_ORG="${{ secrets.SENTRY_ORG }}" `
+            --env SENTRY_PROJECT="${{ secrets.SENTRY_PROJECT }}" `
+            --env SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" `
+            ghcr.io/getsentry/unreal-docker:${{ env.UE_VERSION }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          path: checkout
+          submodules: recursive
+
+      - name: Build game
+        run: |
+          docker exec unreal C:\UnrealEngine\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun `
+            -project=C:\workspace\checkout\SentryTower.uproject `
+            -archivedirectory=C:\workspace\checkout\Builds `
+            -platform=Win64 `
+            -nop4 `
+            -cook `
+            -build `
+            -stage `
+            -prereqs `
+            -package `
+            -archive
+
+      - name: Upload SentryTower
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: SentryTower
+          path: checkout/Builds/Windows/
+          retention-days: 90
