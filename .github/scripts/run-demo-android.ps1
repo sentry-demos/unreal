@@ -32,7 +32,7 @@ if (-not $apk) {
 Write-Host "Using APK: $($apk.FullName)"
 
 $activity = 'io.sentry.tower/com.epicgames.unreal.GameActivity'
-$dsnArg = "-ini:Engine:\[/Script/Sentry.SentrySettings\]:Dsn=$env:SENTRY_DSN"
+$dsnArg = "-ini:Engine:\[/Script/Sentry.SentrySettings\]:Dsn=$env:SENTRY_DSN\ -ini:Engine:\[/Script/Sentry.SentrySettings\]:Debug=True"
 
 try {
     Write-Host 'Connecting to SauceLabs device...'
