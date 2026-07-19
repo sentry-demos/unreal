@@ -4,14 +4,8 @@ on:
   workflow_call:
 
 jobs:
-  build:
-    name: Build x86_64 APK
-    uses: ./.github/workflows/build-android.yml
-    secrets: inherit
-
   run:
     name: Run Demo (Android Emulator)
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -25,11 +19,14 @@ jobs:
           ref: 8be06e220d490e527b810f6d073872025bf491b3
           path: app-runner
 
-      - name: Download SentryTower (built in this run)
+      - name: Download SentryTower (x64 build from run 29691331747)
         id: download
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: SentryTower-Android
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 29691331747
 
       - name: Enable KVM
         run: |
@@ -48,4 +45,7 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: false
-          script: pwsh ./.github/scripts/run-demo-android.ps1 -ApkDir "${{ steps.download.outputs.download-path }}" -DevicePlatform Adb
+          script: |
+            export PATH="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n1):$PATH"
+            aapt version || aapt2 version
+            pwsh ./.github/scripts/run-demo-android.ps1 -ApkDir "${{ steps.download.outputs.download-path }}" -DevicePlatform Adb
