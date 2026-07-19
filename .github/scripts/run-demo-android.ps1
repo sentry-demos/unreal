@@ -11,7 +11,11 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$ApkDir
+    [string]$ApkDir,
+
+    # 'AndroidSauceLabs' (real device) or 'Adb' (local device/emulator)
+    [ValidateSet('AndroidSauceLabs', 'Adb')]
+    [string]$DevicePlatform = 'AndroidSauceLabs'
 )
 
 Set-StrictMode -Version Latest
@@ -23,8 +27,10 @@ if (-not $env:SENTRY_DSN) {
     throw 'Environment variable SENTRY_DSN must be set'
 }
 
+# SauceLabs devices are arm64; CI emulators are x86_64
+$preferredArch = if ($DevicePlatform -eq 'Adb') { 'x64|x86' } else { 'arm64' }
 $apk = Get-ChildItem -Path $ApkDir -Filter 'SentryTower*.apk' -Recurse |
-    Sort-Object { $_.Name -match 'arm64' } -Descending |
+    Sort-Object { $_.Name -match $preferredArch } -Descending |
     Select-Object -First 1
 if (-not $apk) {
     throw "No SentryTower APK found in $ApkDir"
@@ -35,8 +41,8 @@ $activity = 'io.sentry.tower/com.epicgames.unreal.GameActivity'
 $dsnArg = "-ini:Engine:\[/Script/Sentry.SentrySettings\]:Dsn=$env:SENTRY_DSN\ -ini:Engine:\[/Script/Sentry.SentrySettings\]:Debug=True"
 
 try {
-    Write-Host 'Connecting to SauceLabs device...'
-    Connect-Device -Platform 'AndroidSauceLabs'
+    Write-Host "Connecting to device (platform: $DevicePlatform)..."
+    Connect-Device -Platform $DevicePlatform
 
     Write-Host 'Installing APK...'
     Install-DeviceApp -Path $apk.FullName

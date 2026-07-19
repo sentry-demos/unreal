@@ -14,6 +14,7 @@ on:
           - windows
           - linux
           - android
+          - android-emulator
 
 concurrency:
   group: run-demo
@@ -33,4 +34,10 @@ jobs:
   run-android:
     if: ${{ github.event_name != 'workflow_dispatch' || contains(fromJSON('["all","android"]'), inputs.platforms) }}
     uses: ./.github/workflows/run-android.yml
+    secrets: inherit
+
+  run-android-emulator:
+    # Debug lane: builds an x86_64 APK and runs it on a hosted emulator instead of SauceLabs
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms == 'android-emulator' }}
+    uses: ./.github/workflows/run-android-emulator.yml
     secrets: inherit
