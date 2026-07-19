@@ -57,14 +57,17 @@ try {
 
     Dump-AdbLogcat 'pre-run'
 
+    # Emulators hang creating a Vulkan device on SwiftShader; run headless there
+    $rhiArg = if ($DevicePlatform -eq 'Adb') { "-nullrhi\ " } else { "" }
+
     Write-Host 'Run 1: launching game simulation, waiting for intentional crash...'
-    $crashRun = Invoke-DeviceApp -ExecutablePath $activity -Arguments "-e cmdline --idle\ $dsnArg"
+    $crashRun = Invoke-DeviceApp -ExecutablePath $activity -Arguments "-e cmdline --idle\ $rhiArg$dsnArg"
     Write-Host "Run 1 finished (exit code: $($crashRun.ExitCode))"
 
     Dump-AdbLogcat 'run 1'
 
     Write-Host 'Run 2: relaunching in upload-only mode to flush the crash report...'
-    $uploadRun = Invoke-DeviceApp -ExecutablePath $activity -Arguments "-e cmdline -upload-only\ $dsnArg"
+    $uploadRun = Invoke-DeviceApp -ExecutablePath $activity -Arguments "-e cmdline -upload-only\ $rhiArg$dsnArg"
     Write-Host "Run 2 finished (exit code: $($uploadRun.ExitCode))"
 
     Dump-AdbLogcat 'run 2'
