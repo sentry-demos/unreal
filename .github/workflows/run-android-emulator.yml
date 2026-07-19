@@ -45,7 +45,5 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: false
-          script: |
-            export PATH="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n1):$PATH"
-            aapt version || aapt2 version
-            pwsh ./.github/scripts/run-demo-android.ps1 -ApkDir "${{ steps.download.outputs.download-path }}" -DevicePlatform Adb
+          # each script line runs as a separate sh -c, so keep PATH setup and pwsh in one line
+          script: PATH="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n1):$PATH" pwsh ./.github/scripts/run-demo-android.ps1 -ApkDir "${{ steps.download.outputs.download-path }}" -DevicePlatform Adb
