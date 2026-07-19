@@ -79,9 +79,10 @@ function Invoke-AdbRun([string]$UeCommandLine, [int]$TimeoutSec) {
 }
 
 if ($DevicePlatform -eq 'Adb') {
-    # Emulators hang creating a Vulkan device on SwiftShader; force the GLES fallback
-    # (-nullrhi is not supported on Android: no null shader platform)
-    $commonArgs = "-ini:Engine:[SystemSettings]:r.Android.DisableVulkanSupport=1 " +
+    # Emulators hang in Vulkan PSO precaching on SwiftShader; -opengl forces the GLES RHI
+    # (-nullrhi is not supported on Android, and the DisableVulkanSupport CVar gets
+    # overridden by the device profile)
+    $commonArgs = "-opengl " +
         "-ini:Engine:[/Script/Sentry.SentrySettings]:Dsn=$env:SENTRY_DSN " +
         "-ini:Engine:[/Script/Sentry.SentrySettings]:Debug=True"
 
