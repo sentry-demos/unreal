@@ -57,8 +57,9 @@ try {
 
     Dump-AdbLogcat 'pre-run'
 
-    # Emulators hang creating a Vulkan device on SwiftShader; run headless there
-    $rhiArg = if ($DevicePlatform -eq 'Adb') { "-nullrhi\ " } else { "" }
+    # Emulators hang creating a Vulkan device on SwiftShader; force the GLES fallback there
+    # (-nullrhi is not supported on Android: no null shader platform)
+    $rhiArg = if ($DevicePlatform -eq 'Adb') { "-ini:Engine:\[SystemSettings\]:r.Android.DisableVulkanSupport=1\ " } else { "" }
 
     Write-Host 'Run 1: launching game simulation, waiting for intentional crash...'
     $crashRun = Invoke-DeviceApp -ExecutablePath $activity -Arguments "-e cmdline --idle\ $rhiArg$dsnArg"
