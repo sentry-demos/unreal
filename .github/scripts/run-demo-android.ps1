@@ -47,13 +47,27 @@ try {
     Write-Host 'Installing APK...'
     Install-DeviceApp -Path $apk.FullName
 
+    function Dump-AdbLogcat([string]$Label) {
+        if ($DevicePlatform -ne 'Adb') { return }
+        Write-Host "--- logcat ($Label) ---"
+        adb logcat -d -v time | Select-String -Pattern 'Sentry|LogSentrySdk|GameActivity|UE ' -CaseSensitive | ForEach-Object { $_.Line }
+        adb logcat -c
+        Write-Host "--- end logcat ($Label) ---"
+    }
+
+    Dump-AdbLogcat 'pre-run'
+
     Write-Host 'Run 1: launching game simulation, waiting for intentional crash...'
     $crashRun = Invoke-DeviceApp -ExecutablePath $activity -Arguments "-e cmdline --idle\ $dsnArg"
     Write-Host "Run 1 finished (exit code: $($crashRun.ExitCode))"
 
+    Dump-AdbLogcat 'run 1'
+
     Write-Host 'Run 2: relaunching in upload-only mode to flush the crash report...'
     $uploadRun = Invoke-DeviceApp -ExecutablePath $activity -Arguments "-e cmdline -upload-only\ $dsnArg"
     Write-Host "Run 2 finished (exit code: $($uploadRun.ExitCode))"
+
+    Dump-AdbLogcat 'run 2'
 
     Write-Host 'Demo run completed.'
 }
