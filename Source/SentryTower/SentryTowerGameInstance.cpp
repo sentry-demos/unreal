@@ -104,6 +104,9 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 	HttpRequest->SetContentAsString(JsonString);
 
+	CheckoutSpan->AddToRoot();
+	CheckoutTransaction->AddToRoot();
+
 	HttpRequest->OnProcessRequestComplete().BindLambda([=](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
 		CheckoutSpan->Finish();
@@ -124,6 +127,9 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 		ResponseSpan->Finish();
 		CheckoutTransaction->Finish();
+
+		CheckoutSpan->RemoveFromRoot();
+		CheckoutTransaction->RemoveFromRoot();
 	});
 
 	HttpRequest->ProcessRequest();
