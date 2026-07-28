@@ -69,12 +69,15 @@ void ASentryTowerTurret::Shoot(AActor* TargetActor, const FVector& TargetLocatio
 	auto Projectile = 
 		Cast<ASentryTowerProjectile>(GetWorld()->SpawnActor(ProjectileType, &SpawnLocation, &SpawnRotation));
 
-	Projectile->TargetToFollow = TargetActor;
-	Projectile->TargetStationary = TargetLocation;
+	if (Projectile)
+	{
+		Projectile->TargetToFollow = TargetActor;
+		Projectile->TargetStationary = TargetLocation;
 
-	Projectile->Init();
+		Projectile->Init();
 
-	UGameplayStatics::PlaySound2D(GetWorld(), ShootSound);
+		UGameplayStatics::PlaySound2D(GetWorld(), ShootSound);
+	}
 }
 
 void ASentryTowerTurret::Tick(float DeltaTime)
