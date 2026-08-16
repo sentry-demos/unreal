@@ -104,8 +104,24 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 	HttpRequest->SetContentAsString(JsonString);
 
-	HttpRequest->OnProcessRequestComplete().BindLambda([=](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
+	// Use TWeakObjectPtr to safely capture UObjects across async boundaries
+	// This prevents crashes if the objects are garbage collected during the HTTP request
+	TWeakObjectPtr<USentrySpan> CheckoutSpanWeak(CheckoutSpan);
+	TWeakObjectPtr<USentryTransaction> CheckoutTransactionWeak(CheckoutTransaction);
+
+	HttpRequest->OnProcessRequestComplete().BindLambda([OnBuyComplete, CheckoutSpanWeak, CheckoutTransactionWeak](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
+		// Check if objects are still valid (not garbage collected)
+		if (!CheckoutSpanWeak.IsValid() || !CheckoutTransactionWeak.IsValid())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Checkout span or transaction was garbage collected during HTTP request"));
+			OnBuyComplete.ExecuteIfBound(false);
+			return;
+		}
+
+		USentrySpan* CheckoutSpan = CheckoutSpanWeak.Get();
+		USentryTransaction* CheckoutTransaction = CheckoutTransactionWeak.Get();
+
 		CheckoutSpan->Finish();
 
 		USentrySpan* ResponseSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"), true);
