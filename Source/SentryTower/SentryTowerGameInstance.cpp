@@ -104,11 +104,15 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 	HttpRequest->SetContentAsString(JsonString);
 
-	HttpRequest->OnProcessRequestComplete().BindLambda([=](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
-	{
-		CheckoutSpan->Finish();
+	// Protect UObjects from garbage collection during async HTTP request
+	TStrongObjectPtr<USentrySpan> CheckoutSpanPtr(CheckoutSpan);
+	TStrongObjectPtr<USentryTransaction> CheckoutTransactionPtr(CheckoutTransaction);
 
-		USentrySpan* ResponseSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"), true);
+	HttpRequest->OnProcessRequestComplete().BindLambda([CheckoutSpanPtr, CheckoutTransactionPtr, OnBuyComplete](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
+	{
+		CheckoutSpanPtr->Finish();
+
+		USentrySpan* ResponseSpan = CheckoutTransactionPtr->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"), true);
 		ensureMsgf(bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200, TEXT("Checkout HTTP request failed"));
 
 		if (bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200)
@@ -123,7 +127,7 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 		}
 
 		ResponseSpan->Finish();
-		CheckoutTransaction->Finish();
+		CheckoutTransactionPtr->Finish();
 	});
 
 	HttpRequest->ProcessRequest();
