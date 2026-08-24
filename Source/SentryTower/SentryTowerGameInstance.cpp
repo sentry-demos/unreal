@@ -66,6 +66,8 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	USentrySubsystem* Sentry = GEngine->GetEngineSubsystem<USentrySubsystem>();
 
 	USentryTransaction* CheckoutTransaction = Sentry->StartTransaction(TEXT("checkout"), TEXT("http.client"), true);
+	// Protect transaction from garbage collection during async HTTP request
+	CheckoutTransaction->AddToRoot();
 
 	USentrySpan* ProcessSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_upgrade_data"), true);
 
@@ -83,6 +85,9 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	ProcessSpan->Finish();
 
 	USentrySpan* CheckoutSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("checkout_request"), true);
+	// Protect span from garbage collection during async HTTP request
+	CheckoutSpan->AddToRoot();
+	
 	FString Domain = TEXT("https://flask.empower-plant.com");
 	FString Endpoint = TEXT("/checkout");
 	FString CheckoutURL = Domain + Endpoint;
@@ -107,6 +112,8 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 	HttpRequest->OnProcessRequestComplete().BindLambda([=](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
 		CheckoutSpan->Finish();
+		// Remove GC protection for span after finishing it
+		CheckoutSpan->RemoveFromRoot();
 
 		USentrySpan* ResponseSpan = CheckoutTransaction->StartChildSpan(TEXT("task"), TEXT("process_checkout_response"), true);
 		ensureMsgf(bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200, TEXT("Checkout HTTP request failed"));
@@ -124,6 +131,8 @@ void USentryTowerGameInstance::BuyUpgrade(const FOnBuyComplete& OnBuyComplete)
 
 		ResponseSpan->Finish();
 		CheckoutTransaction->Finish();
+		// Remove GC protection for transaction after finishing it
+		CheckoutTransaction->RemoveFromRoot();
 	});
 
 	HttpRequest->ProcessRequest();
