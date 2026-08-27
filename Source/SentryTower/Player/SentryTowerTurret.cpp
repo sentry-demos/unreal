@@ -69,6 +69,12 @@ void ASentryTowerTurret::Shoot(AActor* TargetActor, const FVector& TargetLocatio
 	auto Projectile = 
 		Cast<ASentryTowerProjectile>(GetWorld()->SpawnActor(ProjectileType, &SpawnLocation, &SpawnRotation));
 
+	if (!Projectile)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Failed to spawn projectile in ASentryTowerTurret::Shoot. ProjectileType may be unset or spawn failed."));
+		return;
+	}
+
 	Projectile->TargetToFollow = TargetActor;
 	Projectile->TargetStationary = TargetLocation;
 
