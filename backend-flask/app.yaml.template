@@ -1,0 +1,8 @@
+service: ${FLASK_APP_ENGINE_SERVICE}
+runtime: python312
+entrypoint: ./start.sh
+
+instance_class: F2
+
+vpc_access_connector:
+  name: projects/${GCP_PROJECT}/locations/${GCP_REGION}/connectors/empower-plant-connector
