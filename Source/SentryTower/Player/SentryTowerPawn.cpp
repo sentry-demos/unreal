@@ -53,6 +53,11 @@ ASentryTowerPawn::ASentryTowerPawn()
 
 void ASentryTowerPawn::SetProjectileType(TSubclassOf<ASentryTowerProjectile> ProjectileType)
 {
+	if (!ProjectileType)
+	{
+		return;
+	}
+
 	auto TurretActor = Cast<ASentryTowerTurret>(Turret->GetChildActor());
 	if (!TurretActor)
 	{

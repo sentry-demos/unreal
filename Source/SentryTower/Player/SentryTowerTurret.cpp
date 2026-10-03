@@ -61,6 +61,11 @@ void ASentryTowerTurret::Shoot(AActor* TargetActor, const FVector& TargetLocatio
 		return;
 	}
 
+	if (!ProjectileType)
+	{
+		return;
+	}
+
 	LastShotTime = CurrentTime;
 
 	FVector SpawnLocation = ProjectileSocket->GetComponentLocation();
@@ -68,6 +73,11 @@ void ASentryTowerTurret::Shoot(AActor* TargetActor, const FVector& TargetLocatio
 
 	auto Projectile = 
 		Cast<ASentryTowerProjectile>(GetWorld()->SpawnActor(ProjectileType, &SpawnLocation, &SpawnRotation));
+
+	if (!Projectile)
+	{
+		return;
+	}
 
 	Projectile->TargetToFollow = TargetActor;
 	Projectile->TargetStationary = TargetLocation;
