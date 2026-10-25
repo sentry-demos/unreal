@@ -59,6 +59,11 @@ void ASentryTowerPawn::SetProjectileType(TSubclassOf<ASentryTowerProjectile> Pro
 		return;
 	}
 
+	if (!ProjectileType)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Attempting to set null ProjectileType. Projectile spawning will fail."));
+	}
+
 	TurretActor->ProjectileType = ProjectileType;
 }
 
