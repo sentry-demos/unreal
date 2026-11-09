@@ -59,6 +59,11 @@ void ASentryTowerPawn::SetProjectileType(TSubclassOf<ASentryTowerProjectile> Pro
 		return;
 	}
 
+	if (!ProjectileType)
+	{
+		return;
+	}
+
 	TurretActor->ProjectileType = ProjectileType;
 }
 
